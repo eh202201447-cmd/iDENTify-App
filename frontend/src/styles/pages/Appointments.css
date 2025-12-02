@@ -1,0 +1,274 @@
+.appointments-page {
+  padding: 2rem;
+}
+
+.appointments-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+}
+
+.appointments-title {
+  font-size: 2rem;
+  font-weight: bold;
+}
+
+.appointments-search input {
+  padding: 0.8rem 1rem;
+  border-radius: 8px;
+  border: 1px solid #dee2e6;
+  min-width: 300px;
+}
+
+.appointments-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  background-color: #f8f9fa;
+  padding: 1.5rem;
+  border-radius: 12px;
+  margin-bottom: 2rem;
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.filter-group label {
+  font-weight: bold;
+  margin-bottom: 0.5rem;
+}
+
+.filter-group select {
+  padding: 0.8rem;
+  border-radius: 8px;
+  border: 1px solid #dee2e6;
+}
+
+.conflict-alert {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+  padding: 1rem;
+  border-radius: 8px;
+  background-color: #fff3cd;
+  color: #664d03;
+  margin-bottom: 2rem;
+}
+
+.conflict-icon {
+  font-size: 1.5rem;
+}
+
+.conflict-title {
+  font-weight: bold;
+  margin-bottom: 0.5rem;
+}
+
+.conflict-alert ul li {
+  margin-bottom: 0.5rem;
+}
+
+.reschedule-btn {
+  background-color: #ffc107;
+  color: #212529;
+  border: none;
+  padding: 0.3rem 0.8rem;
+  border-radius: 8px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background-color 0.3s;
+  margin-left: 1rem;
+}
+
+.reschedule-btn:hover {
+  background-color: #e0a800;
+}
+
+.appointments-table-container {
+  background-color: #fff;
+  padding: 2rem;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.appointments-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.appointments-table th,
+.appointments-table td {
+  padding: 1rem;
+  text-align: left;
+  border-bottom: 1px solid #f1f3f5;
+}
+
+.appointments-table th {
+  background-color: #f8f9fa;
+  font-weight: bold;
+  color: #495057;
+}
+
+.appointments-table tbody tr:hover {
+  background-color: #f1f3f5;
+}
+
+.time-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.time-end {
+  font-size: 0.9rem;
+  color: #6c757d;
+}
+
+.badge {
+  padding: 0.4rem 0.8rem;
+  border-radius: 20px;
+  font-weight: bold;
+  font-size: 0.8rem;
+}
+
+.badge-checked-in {
+  background-color: #e7f5ff;
+  color: #1c7ed6;
+}
+
+.badge-waiting {
+  background-color: #fff9db;
+  color: #f59f00;
+}
+
+.badge-on-chair {
+  background-color: #e6fcf5;
+  color: #2f9e44;
+}
+
+.badge-treatment {
+  background-color: #dbe4ff;
+  color: #4c6ef5;
+}
+
+.badge-for-x-ray {
+  background-color: #ffe3e3;
+  color: #c92a2a;
+}
+
+.badge-returning-from-x-ray {
+  background-color: #f3f0ff;
+  color: #7048e8;
+}
+
+.badge-payment-billing {
+  background-color: #e1f5fe;
+  color: #03a9f4;
+}
+
+.badge-done {
+  background-color: #d4edda;
+  color: #28a745;
+}
+
+.badge-no-show {
+  background-color: #f8f9fa;
+  color: #495057;
+}
+
+.badge-cancelled {
+  background-color: #dee2e6;
+  color: #6c757d;
+}
+
+.badge-neutral {
+  background-color: #f1f3f5;
+  color: #495057;
+}
+
+.notes-pill {
+  background-color: #f3f0ff;
+  color: #7048e8;
+  padding: 0.4rem 0.8rem;
+  border-radius: 20px;
+  font-weight: bold;
+  font-size: 0.8rem;
+}
+
+.contact-cell {
+  position: relative;
+}
+
+.contact-button {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+}
+
+.contact-popover {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  width: 280px;
+  background: #fff;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  padding: 1rem;
+  z-index: 10;
+}
+
+.contact-popover p {
+  margin: 0 0 0.5rem 0;
+}
+
+.edit-btn, .start-btn, .delete-btn {
+  background-color: #4c6ef5;
+  color: #fff;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background-color 0.3s;
+  margin-right: 0.5rem;
+}
+
+.edit-btn:hover, .start-btn:hover, .delete-btn:hover {
+  background-color: #3b5bdb;
+}
+
+.start-btn {
+  background-color: #2f9e44;
+}
+
+.start-btn:hover {
+  background-color: #2b8a3e;
+}
+
+.start-btn:disabled {
+  background-color: #adb5bd;
+  cursor: not-allowed;
+}
+
+.delete-btn {
+  background-color: #dc3545;
+}
+
+.delete-btn:hover {
+  background-color: #c82333;
+}
+
+.appointments-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 2rem;
+  padding: 1rem;
+  background-color: #f8f9fa;
+  border-radius: 12px;
+}

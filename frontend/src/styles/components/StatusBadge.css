@@ -1,0 +1,57 @@
+.status-badge {
+  padding: 0.4rem 0.8rem;
+  border-radius: 20px;
+  font-weight: bold;
+  font-size: 0.8rem;
+  text-transform: capitalize;
+}
+
+.status-badge.checked-in {
+  background-color: #e7f5ff;
+  color: #1c7ed6;
+}
+
+.status-badge.waiting {
+  background-color: #fff9db;
+  color: #f59f00;
+}
+
+.status-badge.on-chair {
+  background-color: #e6fcf5;
+  color: #2f9e44;
+}
+
+.status-badge.treatment {
+  background-color: #dbe4ff;
+  color: #4c6ef5;
+}
+
+.status-badge.for-x-ray {
+  background-color: #ffe3e3;
+  color: #c92a2a;
+}
+
+.status-badge.returning-from-x-ray {
+  background-color: #f3f0ff;
+  color: #7048e8;
+}
+
+.status-badge.payment-billing {
+  background-color: #e1f5fe;
+  color: #03a9f4;
+}
+
+.status-badge.done {
+  background-color: #d4edda;
+  color: #28a745;
+}
+
+.status-badge.no-show {
+  background-color: #f8f9fa;
+  color: #495057;
+}
+
+.status-badge.cancelled {
+  background-color: #dee2e6;
+  color: #6c757d;
+}

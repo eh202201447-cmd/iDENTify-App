@@ -1,0 +1,181 @@
+.dentists-page {
+  padding: 2rem;
+}
+
+.dentists-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+}
+
+.dentists-title {
+  font-size: 2rem;
+  font-weight: bold;
+}
+
+.dentist-calendar-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.small-label {
+  font-size: 0.9rem;
+  color: #6c757d;
+  margin-bottom: 0.5rem;
+}
+
+.datepicker-input {
+  padding: 0.8rem;
+  border-radius: 8px;
+  border: 1px solid #dee2e6;
+}
+
+.dentist-filter-bar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  background-color: #f8f9fa;
+  padding: 1.5rem;
+  border-radius: 12px;
+  margin-bottom: 2rem;
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.filter-group label {
+  font-weight: bold;
+  margin-bottom: 0.5rem;
+}
+
+.filter-group select {
+  padding: 0.8rem;
+  border-radius: 8px;
+  border: 1px solid #dee2e6;
+}
+
+.dentist-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+  gap: 2rem;
+}
+
+.dentist-card {
+  background-color: #fff;
+  padding: 2rem;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.dentist-card__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 1.5rem;
+}
+
+.dentist-specialization {
+  font-size: 0.9rem;
+  color: #6c757d;
+  margin-bottom: 0.5rem;
+}
+
+.dentist-card h3 {
+  font-size: 1.5rem;
+  font-weight: bold;
+  margin: 0;
+}
+
+.muted-text {
+  color: #adb5bd;
+}
+
+.status-pill {
+  padding: 0.5rem 1rem;
+  border-radius: 20px;
+  font-weight: bold;
+  font-size: 0.9rem;
+}
+
+.status-available {
+  background-color: #e6fcf5;
+  color: #2f9e44;
+}
+
+.status-busy {
+  background-color: #fff9db;
+  color: #f59f00;
+}
+
+.status-off {
+  background-color: #f8f9fa;
+  color: #868e96;
+}
+
+.busy-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  background-color: #fff3cd;
+  color: #664d03;
+  padding: 1rem;
+  border-radius: 8px;
+  margin-bottom: 1.5rem;
+}
+
+.schedule-grid {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.schedule-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.schedule-row input {
+  padding: 0.5rem;
+  border-radius: 8px;
+  border: 1px solid #dee2e6;
+}
+
+.time-separator {
+  font-weight: bold;
+}
+
+.pill-btn {
+  background-color: #007bff;
+  color: #fff;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 20px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.pill-btn:hover {
+  background-color: #0056b3;
+}
+
+.break-list,
+.leave-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.break-chip,
+.leave-chip {
+  background-color: #f1f3f5;
+  color: #495057;
+  padding: 0.5rem 1rem;
+  border-radius: 20px;
+}

@@ -1,0 +1,583 @@
+.patient-form-page {
+  margin-left: 360px;
+  padding: 40px 70px;
+  min-width: 0;
+  overflow-x: hidden;
+}
+
+.form-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+}
+
+.print-btn {
+  background-color: #007bff;
+  color: white;
+  padding: 0.75rem 1.5rem;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.patient-form-tabs {
+  display: flex;
+  gap: 40px;
+  margin-bottom: 20px;
+  font-size: 18px;
+  flex-wrap: wrap;
+}
+
+.patient-form-tabs span {
+  cursor: pointer;
+}
+
+.patient-form-tabs .tab-active {
+  font-weight: 700;
+}
+
+.patient-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 40px;
+  margin-bottom: 30px;
+}
+
+@media (max-width: 1400px) {
+  .patient-form-grid {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+}
+
+.patient-form-layout {
+  display: flex;
+  gap: 1rem;
+}
+
+.patient-form-card {
+  flex: 1;
+  min-width: 0;
+  padding: 2rem;
+  background-color: #fff;
+}
+
+.context-menu {
+  position: absolute;
+  background-color: #fff;
+  border: 1px solid #dee2e6;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  padding: 1rem;
+  z-index: 1001;
+}
+
+.thumbnail-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.thumbnail-item {
+  width: 100px;
+  height: 100px;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.thumbnail-item button {
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+
+.thumbnail-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+
+
+.section-title {
+  font-size: 18px;
+  margin-bottom: 8px;
+}
+
+.patient-details-card,
+.dentist-details-card {
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+
+.patient-details-box {
+  background: white;
+  border-radius: 16px;
+  padding: 20px 24px;
+  border: 2px solid #c5d8ea;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.05);
+  word-wrap: break-word;
+}
+
+.patient-details-box p {
+  margin-bottom: 6px;
+  overflow-wrap: break-word;
+}
+
+.patient-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.patient-field label {
+  font-weight: 700;
+  font-size: 13px;
+  color: #415165;
+}
+
+.patient-field input {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid #c5d8ea;
+  font-size: 14px;
+}
+
+.dentist-row {
+  background: transparent;
+}
+
+.dentist-select {
+  width: 100%;
+  max-width: 260px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 2px solid #c5d8ea;
+  font-size: 14px;
+}
+
+.timeline-section,
+.medication-section,
+.upload-section {
+  background: white;
+  border: 1px solid rgba(95, 142, 167, 0.1);
+  border-radius: 16px;
+  padding: 16px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.05);
+  margin-top: 16px;
+}
+
+.timeline-form,
+.medication-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.timeline-list,
+.medication-list,
+.upload-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.medication-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.timeline-entry,
+.medication-entry,
+.upload-entry {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: #f9fbfe;
+}
+
+.timeline-meta {
+  font-size: 13px;
+  color: #526070;
+  margin-bottom: 4px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.status-palette {
+  display: flex;
+  gap: 10px;
+  margin: 8px 0 12px;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 14px;
+  border: 1px solid #d7e1eb;
+  cursor: pointer;
+  background: white;
+}
+
+.status-pill.active {
+  background: #1a4e9c;
+  color: white;
+  border-color: #1a4e9c;
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.status-dot.problem {
+  background: #e03131;
+}
+
+.status-dot.planned {
+  background: #1a4e9c;
+}
+
+.status-dot.completed {
+  background: #2f9e44;
+}
+
+.tc-status-problem {
+  box-shadow: inset 0 0 0 2px #e03131;
+}
+
+.tc-status-planned {
+  box-shadow: inset 0 0 0 2px #1a4e9c;
+}
+
+.tc-status-completed {
+  box-shadow: inset 0 0 0 2px #2f9e44;
+}
+
+.vital-signs {
+  margin-top: 24px;
+}
+
+.vital-row {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.vital-field {
+  display: flex;
+  flex-direction: column;
+  font-size: 13px;
+  flex: 1;
+  min-width: 120px;
+}
+
+.oral-section {
+  margin-top: 20px;
+  margin-bottom: 24px;
+}
+
+.tooth-chart-container {
+  background: white;
+  border-radius: 16px;
+  border: 2px solid #c5d8ea;
+  padding: 20px 22px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.05);
+  overflow-x: auto;
+}
+
+.tooth-inner-panel {
+  border-radius: 18px;
+  border: 2px solid #5a8ebf;
+  padding: 18px 24px 20px;
+  min-width: 800px;
+}
+
+.tc-group {
+  margin-bottom: 22px;
+}
+
+.tc-row-header {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.tc-box-row {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.tc-box-cell {
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  border: 2px solid #000;
+  background: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.tc-box-cell.tc-has-mark {
+  background: #dbeafe;
+}
+
+.tc-selected {
+  box-shadow: 0 0 0 3px rgba(17, 120, 219, 0.4);
+}
+
+.tc-circle-row {
+  display: flex;
+  justify-content: center;
+  gap: 14px;
+  margin-bottom: 16px;
+  flex-wrap: nowrap;
+}
+
+.tc-circle-unit {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+}
+
+.tc-circle {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid #000;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tc-circle::before,
+.tc-circle::after {
+  content: "";
+  position: absolute;
+  background: #000;
+}
+
+.tc-circle::before {
+  width: 2px;
+  height: 100%;
+  left: 50%;
+  top: 0;
+  transform: translateX(-50%);
+}
+
+.tc-circle::after {
+  width: 100%;
+  height: 2px;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.tc-circle-mark {
+  font-size: 11px;
+  font-weight: 600;
+  background: #ffffff;
+  padding: 1px 3px;
+  border-radius: 3px;
+}
+
+.tc-number {
+  margin-top: 6px;
+  font-size: 10px;
+}
+
+.tc-circle-unit.tc-has-mark .tc-circle {
+  background: #dbeafe;
+}
+
+.tc-small-hint {
+  margin-top: 10px;
+  font-size: 12px;
+  color: #606f7b;
+}
+
+.attachment-section {
+  margin-top: 20px;
+}
+
+.attachment-box {
+  background: white;
+  border-radius: 16px;
+  border: 2px solid #c5d8ea;
+  overflow: hidden;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.05);
+}
+
+.attachment-header {
+  padding: 10px 14px;
+  font-size: 13px;
+  background: #f2f6fb;
+  border-bottom: 1px solid #dde6f3;
+}
+
+.attachment-body {
+  padding: 16px 14px;
+  font-size: 13px;
+  color: #7a8595;
+}
+
+.done-row {
+  margin-top: 24px;
+  display: flex;
+  justify-content: center;
+}
+
+.done-btn {
+  padding: 10px 40px;
+  border-radius: 999px;
+  border: none;
+  background: #1178db;
+  color: white;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.side-panel-backdrop {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  background: rgba(0, 0, 0, 0);
+  visibility: hidden;
+  opacity: 0;
+  transition: 0.25s ease;
+  display: flex;
+  justify-content: flex-end;
+  z-index: 2000;
+}
+
+.side-panel-backdrop.side-panel-open {
+  background: rgba(0, 0, 0, 0.3);
+  visibility: visible;
+  opacity: 1;
+}
+
+.side-panel {
+  width: 320px;
+  background: white;
+  height: 100vh;
+  padding: 20px 22px;
+  box-shadow: -3px 0 12px rgba(0, 0, 0, 0.15);
+  transform: translateX(100%);
+  transition: 0.25s ease;
+  overflow-y: auto;
+}
+
+.side-panel-backdrop.side-panel-open .side-panel {
+  transform: translateX(0);
+}
+
+.code-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.code-option-btn {
+  width: 100%;
+  padding: 10px 12px;
+  background: #f2f6fb;
+  border: 1px solid #c5d8ea;
+  border-radius: 10px;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+}
+
+.code-option-btn:hover {
+  background: #e4eef8;
+}
+
+/* Backwards-compatible aliases for previous class names used in the JSX */
+.side-panel-content {
+  padding: 8px 0;
+}
+
+.options-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.option-pill,
+.option-pill:hover {
+  width: 100%;
+  padding: 10px 12px;
+  background: #f2f6fb;
+  border: 1px solid #c5d8ea;
+  border-radius: 10px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.option-pill:hover {
+  background: #e4eef8;
+}
+
+.option-pill strong {
+  font-weight: 700;
+  display: block;
+}
+
+.option-pill span {
+  font-size: 13px;
+  color: #4a5565;
+}
+
+
+.code-option-code {
+  font-weight: bold;
+  margin-bottom: 2px;
+}
+
+.code-option-label {
+  font-size: 13px;
+  color: #4a5565;
+}
+
+.side-panel-close-btn {
+  margin-top: 20px;
+  width: 100%;
+  padding: 10px;
+  background: #1178db;
+  color: white;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+}

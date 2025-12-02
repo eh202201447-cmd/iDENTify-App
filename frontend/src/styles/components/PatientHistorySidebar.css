@@ -1,0 +1,50 @@
+.patient-history-sidebar {
+  width: 300px;
+  background-color: #f8f9fa;
+  padding: 1.5rem;
+  border-left: 1px solid #dee2e6;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.sidebar-title {
+  font-size: 1.5rem;
+  font-weight: bold;
+  margin-bottom: 2rem;
+  text-align: center;
+}
+
+.collapsible-section {
+  margin-bottom: 1.5rem;
+}
+
+.section-header {
+  background: none;
+  border: none;
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 0;
+  cursor: pointer;
+  font-size: 1.2rem;
+  font-weight: bold;
+}
+
+.section-toggle {
+  font-size: 1.5rem;
+}
+
+.section-content {
+  padding: 1rem;
+}
+
+.section-content ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.section-content li {
+  margin-bottom: 0.5rem;
+}

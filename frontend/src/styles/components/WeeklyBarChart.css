@@ -1,0 +1,14 @@
+.chart-card {
+  background: linear-gradient(135deg, #ffffff 0%, #f8fafb 100%);
+  padding: 28px 32px;
+  border-radius: 16px;
+  box-shadow: 0 8px 24px rgba(95, 142, 167, 0.08);
+  border: 1px solid rgba(95, 142, 167, 0.1);
+  margin-top: 32px;
+}
+
+.chart-title {
+  margin-bottom: 16px;
+  font-size: 18px;
+  color: #1a3557;
+}

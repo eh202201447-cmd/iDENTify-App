@@ -1,0 +1,32 @@
+export const queue = [
+  {
+    id: 1,
+    number: 1,
+    name: "Hernane Benedicto",
+    status: "Checked-In",
+    assignedDentist: "Dr. Paul Zaragoza",
+    notes: "Patient nervous",
+    checkedInTime: "2025-11-28T09:00:00.000Z",
+    source: "walk-in",
+  },
+  {
+    id: 2,
+    number: 2,
+    name: "Erica",
+    status: "Waiting",
+    assignedDentist: "",
+    notes: "Waiting for parent",
+    checkedInTime: "2025-11-28T09:15:00.000Z",
+    source: "appointment",
+  },
+  {
+    id: 3,
+    number: 3,
+    name: "Paul",
+    status: "On Chair",
+    assignedDentist: "Dr. Erica Aquino",
+    notes: "Special instructions",
+    checkedInTime: "2025-11-28T09:30:00.000Z",
+    source: "walk-in",
+  },
+];

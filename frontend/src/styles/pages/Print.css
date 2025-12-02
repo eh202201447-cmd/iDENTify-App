@@ -1,0 +1,35 @@
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  .patient-form-card, .patient-form-card * {
+    visibility: visible;
+  }
+
+  .patient-form-card {
+    position: absolute;
+    left: 0;
+    top: 0;
+  }
+
+  .form-header .print-btn,
+  .done-row,
+  .patient-history-sidebar,
+  .sidebar,
+  .toggle-btn,
+  .logout-btn,
+  .dentist-select,
+  .vital-signs input,
+  .timeline-form,
+  .medication-form,
+  .upload-section,
+  .side-panel-backdrop,
+  .context-menu,
+  .xray-viewer-overlay,
+  .timeline-entry-actions,
+  .medication-entry-actions,
+  .form-header .patients-header {
+    display: none;
+  }
+}
