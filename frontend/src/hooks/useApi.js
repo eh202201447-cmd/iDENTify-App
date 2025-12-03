@@ -10,6 +10,9 @@ export default function useApi() {
   const setPatients = useAppStore((s) => s.setPatients);
   const setAppointments = useAppStore((s) => s.setAppointments);
   const setQueue = useAppStore((s) => s.setQueue);
+  const setDentists = useAppStore((s) => s.setDentists);
+  const setTreatments = useAppStore((s) => s.setTreatments);
+  const setReports = useAppStore((s) => s.setReports);
   const addPatient = useAppStore((s) => s.addPatient);
   const addAppointment = useAppStore((s) => s.addAppointment);
   const addQueueItem = useAppStore((s) => s.addQueueItem);
@@ -28,7 +31,9 @@ export default function useApi() {
       // Transform backend patient objects into frontend-friendly shape used across the app
       const transformed = list.map((p) => {
         const birthdate = p.birthdate || p.birthday || null;
-        const age = birthdate ? (() => {
+        
+        // Calculate age from birthdate OR fetch from vitals OR fetch from top-level age
+        const calculatedAge = birthdate ? (() => {
           const b = new Date(birthdate);
           const now = new Date();
           let a = now.getFullYear() - b.getFullYear();
@@ -36,21 +41,28 @@ export default function useApi() {
           if (m < 0 || (m === 0 && now.getDate() < b.getDate())) a -= 1;
           return a;
         })() : null;
+
+        // Priority: Calculated -> Vitals.age -> p.age
+        const finalAge = calculatedAge !== null ? calculatedAge : (p.vitals?.age || p.age || null);
+
         const gender = (p.gender || p.sex || "").toString();
         const normalizedGender = gender.toLowerCase();
         let mappedSex = gender;
         if (normalizedGender === 'm' || normalizedGender === 'male') mappedSex = 'Male';
         else if (normalizedGender === 'f' || normalizedGender === 'female') mappedSex = 'Female';
+        
         return {
           id: p.id,
           name: p.full_name || p.name || "",
-          age: age || p.age || null,
+          age: finalAge,
           sex: mappedSex || p.sex || "",
           contact: p.contact_number || p.contact || p.phone || "",
           email: p.email || "",
           address: p.address || "",
           birthday: birthdate,
           medicalAlerts: p.medical_alerts || p.medicalAlerts || [],
+          // Keep vitals in the store object so we can access dentist_id later
+          vitals: p.vitals || {}, 
         };
       });
       setPatients(transformed);
@@ -72,7 +84,6 @@ export default function useApi() {
         const apptDate = new Date(appt.appointment_datetime);
         const timeStart = apptDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
         
-        // Placeholder for timeEnd, assumes 1-hour duration
         const endDate = new Date(apptDate.getTime() + 60 * 60 * 1000);
         const timeEnd = endDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
 
@@ -80,7 +91,7 @@ export default function useApi() {
           ...appt,
           timeStart,
           timeEnd,
-          patient: appt.full_name, // Ensure patient name is consistent
+          patient: appt.full_name,
         };
       });
       setAppointments(transformedList);
@@ -108,37 +119,85 @@ export default function useApi() {
     }
   }, [setQueue]);
 
+  const loadDentists = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const list = await api.getDentists();
+      setDentists(list);
+      return list;
+    } catch (err) {
+      setError(err);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, [setDentists]);
+
+  const loadTreatments = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const list = await api.getTreatments();
+      setTreatments(list);
+      return list;
+    } catch (err) {
+      setError(err);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, [setTreatments]);
+
+  const loadReports = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await api.getReports();
+      setReports(data);
+      return data;
+    } catch (err) {
+      setError(err);
+      console.error("API Error in loadReports:", err);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, [setReports]);
+
   // CRUD helpers that sync to store automatically
   const createPatient = useCallback(async (payload) => {
     const created = await api.createPatient(payload);
+    // Use loadPatients logic for consistency if needed, but for now simple map:
     const mapServerToFrontend = (p) => {
+      // Re-use age logic locally for immediate UI update
       const birthdate = p.birthdate || p.birthday || null;
-      const age = birthdate ? (() => {
-        const b = new Date(birthdate);
-        const now = new Date();
-        let a = now.getFullYear() - b.getFullYear();
-        const m = now.getMonth() - b.getMonth();
-        if (m < 0 || (m === 0 && now.getDate() < b.getDate())) a -= 1;
-        return a;
-      })() : null;
-      const gender = (p.gender || p.sex || "").toString();
-      const normalizedGender = gender.toLowerCase();
-      let mappedSex = gender;
-      if (normalizedGender === 'm' || normalizedGender === 'male') mappedSex = 'Male';
-      else if (normalizedGender === 'f' || normalizedGender === 'female') mappedSex = 'Female';
+      let age = null;
+      if (birthdate) {
+         const b = new Date(birthdate);
+         const now = new Date();
+         let a = now.getFullYear() - b.getFullYear();
+         const m = now.getMonth() - b.getMonth();
+         if (m < 0 || (m === 0 && now.getDate() < b.getDate())) a -= 1;
+         age = a;
+      } else {
+         age = p.vitals?.age || p.age || null;
+      }
+
       return {
         id: p.id,
         name: p.full_name || p.name || "",
-        age: age || p.age || null,
-        sex: mappedSex || p.sex || "",
-        contact: p.contact_number || p.contact || p.phone || "",
+        age: age,
+        sex: p.gender || p.sex || "",
+        contact: p.contact_number || p.contact || "",
         email: p.email || "",
         address: p.address || "",
         birthday: birthdate,
-        medicalAlerts: p.medical_alerts || p.medicalAlerts || [],
+        medicalAlerts: p.medical_alerts || [],
+        vitals: p.vitals || {},
       };
     };
-    // If backend returns created object, use it; otherwise append backendless payload
+
     if (created?.id) addPatient(mapServerToFrontend(created));
     else addPatient(payload);
     return created;
@@ -146,25 +205,33 @@ export default function useApi() {
 
   const updatePatient = useCallback(async (id, updates) => {
     const updated = await api.updatePatient(id, updates);
-    const mapServerToFrontend = (p) => ({
-      id: p.id,
-      name: p.full_name || p.name || "",
-      age: p.age || null,
-      sex: (() => {
-        const g = (p.gender || p.sex || '').toString().toLowerCase();
-        if (g === 'm' || g === 'male') return 'Male';
-        if (g === 'f' || g === 'female') return 'Female';
-        return p.sex || p.gender || '';
-      })(),
-      contact: p.contact_number || p.contact || p.phone || "",
-      email: p.email || "",
-      address: p.address || "",
-      birthday: p.birthdate || p.birthday || null,
-      medicalAlerts: p.medical_alerts || p.medicalAlerts || [],
-    });
-    // backend returns updated object OR we update by id
-    if (updated && updated.id) updatePatientStore(updated.id, mapServerToFrontend(updated));
-    else updatePatientStore(id, updates);
+    // Refresh list to ensure consistency, or map manually
+    if (updated && updated.id) {
+       // Manual map for speed
+       const birthdate = updated.birthdate || updated.birthday || null;
+       let age = null;
+       if (birthdate) {
+          const b = new Date(birthdate);
+          const now = new Date();
+          age = now.getFullYear() - b.getFullYear();
+       } else {
+          age = updated.vitals?.age || updated.age || null;
+       }
+       
+       const mapped = {
+         id: updated.id,
+         name: updated.full_name || updated.name,
+         age: age,
+         sex: updated.gender || updated.sex,
+         contact: updated.contact_number || updated.contact,
+         email: updated.email,
+         address: updated.address,
+         birthday: birthdate,
+         medicalAlerts: updated.medical_alerts || [],
+         vitals: updated.vitals || {}
+       };
+       updatePatientStore(updated.id, mapped);
+    }
     return updated;
   }, [updatePatientStore]);
 
@@ -221,8 +288,6 @@ export default function useApi() {
 
   const updateQueue = useCallback(async (id, updates) => {
     const updated = await api.updateQueueItem(id, updates);
-    // We currently don't have an updateQueue action; store's updateQueueStatus exists for status changes.
-    // If status is provided, call updateQueueStatus
     if (updates?.status) {
       useAppStore.getState().updateQueueStatus(id, updates.status);
     }
@@ -235,74 +300,319 @@ export default function useApi() {
     return id;
   }, []);
 
-  const getPatientById = useCallback(async (id) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const patient = await api.getPatientById(id);
-      return patient;
-    } catch (err) {
-      setError(err);
-      throw err;
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  const getToothConditions = useCallback(async (patientId) => {
-    return api.getToothConditions(patientId);
-  }, []);
-
-  const upsertToothCondition = useCallback(async (payload) => {
-    return api.upsertToothCondition(payload);
-  }, []);
-
-  const getTreatmentTimeline = useCallback(async (patientId) => {
-    return api.getTreatmentTimeline(patientId);
-  }, []);
-
-  const addTreatmentTimelineEntry = useCallback(async (payload) => {
-    return api.addTreatmentTimelineEntry(payload);
-  }, []);
-
-  const deleteTreatmentTimelineEntry = useCallback(async (id) => {
-    return api.deleteTreatmentTimelineEntry(id);
-  }, []);
-
-  const getMedications = useCallback(async (patientId) => {
-    return api.getMedications(patientId);
-  }, []);
-
-  const addMedication = useCallback(async (payload) => {
-    return api.addMedication(payload);
-  }, []);
-
-  const deleteMedication = useCallback(async (id) => {
-    return api.deleteMedication(id);
-  }, []);
-
-  return {
-    loading,
-    error,
-    loadPatients,
-    loadAppointments,
-    loadQueue,
-    createPatient,
-    updatePatient,
-    getPatientById,
-    createAppointment,
-    updateAppointment,
-    removeAppointment,
-    addQueue,
-    updateQueue,
-    deleteQueue,
-    getToothConditions,
-    upsertToothCondition,
-    getTreatmentTimeline,
-    addTreatmentTimelineEntry,
-    deleteTreatmentTimelineEntry,
-    getMedications,
-    addMedication,
-    deleteMedication,
-  };
+    const getPatientById = useCallback(async (id) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const patient = await api.getPatientById(id);
+        return patient;
+      } catch (err) {
+        setError(err);
+        throw err;
+      } finally {
+        setLoading(false);
+      }
+    }, []);
+  
+    const getToothConditions = useCallback(async (patientId) => {
+      return api.getToothConditions(patientId);
+    }, []);
+  
+    const upsertToothCondition = useCallback(async (payload) => {
+      return api.upsertToothCondition(payload);
+    }, []);
+  
+    const getTreatmentTimeline = useCallback(async (patientId) => {
+      return api.getTreatmentTimeline(patientId);
+    }, []);
+  
+    const addTreatmentTimelineEntry = useCallback(async (payload) => {
+      return api.addTreatmentTimelineEntry(payload);
+    }, []);
+  
+    const deleteTreatmentTimelineEntry = useCallback(async (id) => {
+      return api.deleteTreatmentTimelineEntry(id);
+    }, []);
+  
+    const getMedications = useCallback(async (patientId) => {
+      return api.getMedications(patientId);
+    }, []);
+  
+    const addMedication = useCallback(async (payload) => {
+      return api.addMedication(payload);
+    }, []);
+  
+    const deleteMedication = useCallback(async (id) => {
+      return api.deleteMedication(id);
+    }, []);
+  
+    return {
+      loading,
+      error,
+      loadPatients,
+      loadAppointments,
+      loadQueue,
+      loadDentists,
+      loadTreatments,
+      loadReports,
+      createPatient,
+      updatePatient,
+      getPatientById,
+      createAppointment,
+      updateAppointment,
+      removeAppointment,
+      addQueue,
+      updateQueue,
+      deleteQueue,
+      getToothConditions,
+      upsertToothCondition,
+      getTreatmentTimeline,
+      addTreatmentTimelineEntry,
+      deleteTreatmentTimelineEntry,
+      getMedications,
+      addMedication,
+      deleteMedication,
+    };
 }
+
+// import { useCallback, useState } from 'react';
+// import api from '../api/apiClient';
+// import useAppStore from '../store/useAppStore';
+
+// export default function useApi() {
+//   const setPatients = useAppStore((s) => s.setPatients);
+//   const setAppointments = useAppStore((s) => s.setAppointments);
+//   const setQueue = useAppStore((s) => s.setQueue);
+//   const setDentists = useAppStore((s) => s.setDentists);
+//   const setTreatments = useAppStore((s) => s.setTreatments);
+//   const setReports = useAppStore((s) => s.setReports);
+//   const addPatient = useAppStore((s) => s.addPatient);
+//   const addAppointment = useAppStore((s) => s.addAppointment);
+//   const addQueueItem = useAppStore((s) => s.addQueueItem);
+//   const updatePatientStore = useAppStore((s) => s.updatePatient);
+//   const updateAppointmentStore = useAppStore((s) => s.updateAppointment);
+//   const deleteAppointmentStore = useAppStore((s) => s.deleteAppointment);
+
+//   const [loading, setLoading] = useState(false);
+//   const [error, setError] = useState(null);
+
+//   const loadPatients = useCallback(async () => {
+//     setLoading(true);
+//     setError(null);
+//     try {
+//       const list = await api.getPatients();
+      
+//       const transformed = list.map((p) => {
+//         // Parse vitals if string
+//         let vitalsObj = p.vitals || {};
+//         if (typeof vitalsObj === 'string') {
+//           try {
+//             vitalsObj = JSON.parse(vitalsObj);
+//           } catch (e) {
+//             vitalsObj = {};
+//           }
+//         }
+
+//         const birthdate = p.birthdate || p.birthday || null;
+//         let finalAge = '--';
+
+//         // Priority 1: Direct DB column 'age'
+//         if (p.age !== undefined && p.age !== null) {
+//             finalAge = p.age;
+//         } 
+//         // Priority 2: Calculate from birthdate
+//         else if (birthdate) {
+//           const b = new Date(birthdate);
+//           const now = new Date();
+//           let a = now.getFullYear() - b.getFullYear();
+//           const m = now.getMonth() - b.getMonth();
+//           if (m < 0 || (m === 0 && now.getDate() < b.getDate())) a -= 1;
+//           finalAge = a;
+//         } 
+//         // Priority 3: Fallback to vitals
+//         else if (vitalsObj.age) {
+//           finalAge = vitalsObj.age;
+//         }
+
+//         const gender = (p.gender || p.sex || "").toString();
+//         let mappedSex = gender;
+//         if (gender.toLowerCase() === 'm' || gender.toLowerCase() === 'male') mappedSex = 'Male';
+//         else if (gender.toLowerCase() === 'f' || gender.toLowerCase() === 'female') mappedSex = 'Female';
+        
+//         return {
+//           id: p.id,
+//           name: p.full_name || p.name || "",
+//           age: finalAge,
+//           sex: mappedSex,
+//           contact: p.contact_number || p.contact || p.phone || "",
+//           email: p.email || "",
+//           address: p.address || "",
+//           birthday: birthdate,
+//           medicalAlerts: p.medical_alerts || p.medicalAlerts || [],
+//           vitals: vitalsObj, 
+//         };
+//       });
+//       setPatients(transformed);
+//       return transformed;
+//     } catch (err) {
+//       setError(err);
+//       throw err;
+//     } finally {
+//       setLoading(false);
+//     }
+//   }, [setPatients]);
+
+//   const loadAppointments = useCallback(async () => {
+//     setLoading(true);
+//     setError(null);
+//     try {
+//       const list = await api.getAppointments();
+//       const transformedList = list.map(appt => {
+//         const apptDate = new Date(appt.appointment_datetime);
+//         const timeStart = apptDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+//         const endDate = new Date(apptDate.getTime() + 60 * 60 * 1000);
+//         const timeEnd = endDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+//         return { ...appt, timeStart, timeEnd, patient: appt.full_name };
+//       });
+//       setAppointments(transformedList);
+//       return transformedList;
+//     } catch (err) { setError(err); throw err; } finally { setLoading(false); }
+//   }, [setAppointments]);
+
+//   const loadQueue = useCallback(async () => {
+//     setLoading(true);
+//     setError(null);
+//     try { const list = await api.getQueue(); setQueue(list); return list; } 
+//     catch (err) { setError(err); throw err; } finally { setLoading(false); }
+//   }, [setQueue]);
+
+//   const loadDentists = useCallback(async () => {
+//     setLoading(true);
+//     setError(null);
+//     try { const list = await api.getDentists(); setDentists(list); return list; } 
+//     catch (err) { setError(err); throw err; } finally { setLoading(false); }
+//   }, [setDentists]);
+
+//   const loadTreatments = useCallback(async () => {
+//     setLoading(true);
+//     setError(null);
+//     try { const list = await api.getTreatments(); setTreatments(list); return list; } 
+//     catch (err) { setError(err); throw err; } finally { setLoading(false); }
+//   }, [setTreatments]);
+
+//   const loadReports = useCallback(async () => {
+//     setLoading(true);
+//     setError(null);
+//     try { const data = await api.getReports(); setReports(data); return data; } 
+//     catch (err) { setError(err); throw err; } finally { setLoading(false); }
+//   }, [setReports]);
+
+//   const createPatient = useCallback(async (payload) => {
+//     const created = await api.createPatient(payload);
+//     // Optimistic / Local update helper
+//     if (created?.id) {
+//        addPatient({
+//          id: created.id,
+//          name: created.full_name,
+//          age: created.age || created.vitals?.age || null,
+//          sex: created.gender,
+//          contact: created.contact_number,
+//          vitals: typeof created.vitals === 'string' ? JSON.parse(created.vitals) : created.vitals
+//        });
+//     }
+//     return created;
+//   }, [addPatient]);
+
+//   const updatePatient = useCallback(async (id, updates) => {
+//     const updated = await api.updatePatient(id, updates);
+//     if (updated && updated.id) {
+//        let v = updated.vitals;
+//        if (typeof v === 'string') v = JSON.parse(v);
+//        updatePatientStore(updated.id, {
+//          ...updated,
+//          name: updated.full_name,
+//          age: updated.age, // Ensure age is synced
+//          contact: updated.contact_number,
+//          sex: updated.gender,
+//          vitals: v
+//        });
+//     }
+//     return updated;
+//   }, [updatePatientStore]);
+
+//   const createAppointment = useCallback(async (payload) => {
+//     const created = await api.createAppointment(payload);
+//     if (created?.id) {
+//         const apptDate = new Date(created.appointment_datetime);
+//         const timeStart = apptDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+//         const endDate = new Date(apptDate.getTime() + 60 * 60 * 1000);
+//         const timeEnd = endDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+//         addAppointment({ ...created, timeStart, timeEnd, patient: created.full_name });
+//     }
+//     return created;
+//   }, [addAppointment]);
+
+//   const updateAppointment = useCallback(async (id, updates) => {
+//     const updated = await api.updateAppointment(id, updates);
+//     if (updated?.id) {
+//        const apptDate = new Date(updated.appointment_datetime);
+//        const timeStart = apptDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+//        const timeEnd = new Date(apptDate.getTime() + 60 * 60 * 1000).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+//        updateAppointmentStore({ ...updated, timeStart, timeEnd, patient: updated.full_name });
+//     }
+//     return updated;
+//   }, [updateAppointmentStore]);
+
+//   const removeAppointment = useCallback(async (id) => {
+//     await api.deleteAppointment(id);
+//     deleteAppointmentStore(id);
+//     return id;
+//   }, [deleteAppointmentStore]);
+
+//   const addQueue = useCallback(async (payload) => {
+//     const created = await api.addQueueItem(payload);
+//     if (created?.id) addQueueItem(created);
+//     return created;
+//   }, [addQueueItem]);
+
+//   const updateQueue = useCallback(async (id, updates) => {
+//     const updated = await api.updateQueueItem(id, updates);
+//     if (updates?.status) {
+//       useAppStore.getState().updateQueueStatus(id, updates.status);
+//     }
+//     return updated;
+//   }, []);
+
+//   const deleteQueue = useCallback(async (id) => {
+//     await api.deleteQueueItem(id);
+//     useAppStore.setState((state) => ({ queue: state.queue.filter((q) => q.id !== id) }));
+//     return id;
+//   }, []);
+
+//   const getPatientById = useCallback(async (id) => {
+//     setLoading(true);
+//     setError(null);
+//     try { const patient = await api.getPatientById(id); return patient; } 
+//     catch (err) { setError(err); throw err; } finally { setLoading(false); }
+//   }, []);
+
+//   const getToothConditions = useCallback(async (patientId) => api.getToothConditions(patientId), []);
+//   const upsertToothCondition = useCallback(async (payload) => api.upsertToothCondition(payload), []);
+//   const getTreatmentTimeline = useCallback(async (patientId) => api.getTreatmentTimeline(patientId), []);
+//   const addTreatmentTimelineEntry = useCallback(async (payload) => api.addTreatmentTimelineEntry(payload), []);
+//   const deleteTreatmentTimelineEntry = useCallback(async (id) => api.deleteTreatmentTimelineEntry(id), []);
+//   const getMedications = useCallback(async (patientId) => api.getMedications(patientId), []);
+//   const addMedication = useCallback(async (payload) => api.addMedication(payload), []);
+//   const deleteMedication = useCallback(async (id) => api.deleteMedication(id), []);
+
+//   return {
+//     loading, error,
+//     loadPatients, loadAppointments, loadQueue, loadDentists, loadTreatments, loadReports,
+//     createPatient, updatePatient, getPatientById,
+//     createAppointment, updateAppointment, removeAppointment,
+//     addQueue, updateQueue, deleteQueue,
+//     getToothConditions, upsertToothCondition,
+//     getTreatmentTimeline, addTreatmentTimelineEntry, deleteTreatmentTimelineEntry,
+//     getMedications, addMedication, deleteMedication,
+//   };
+// }

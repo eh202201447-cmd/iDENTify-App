@@ -8,6 +8,9 @@ const queueRoutes = require("./routes/queue");
 const toothConditionsRoutes = require("./routes/tooth_conditions");
 const treatmentTimelineRoutes = require("./routes/treatment_timeline");
 const medicationsRoutes = require("./routes/medications");
+const dentistsRoutes = require("./routes/dentists");
+const treatmentsRoutes = require("./routes/treatments");
+const reportsRoutes = require("./routes/reports");
 
 const app = express();
 app.use(cors({
@@ -21,6 +24,9 @@ app.use("/api/queue", queueRoutes);
 app.use("/api/tooth-conditions", toothConditionsRoutes);
 app.use("/api/treatment-timeline", treatmentTimelineRoutes);
 app.use("/api/medications", medicationsRoutes);
+app.use("/api/dentists", dentistsRoutes);
+app.use("/api/treatments", treatmentsRoutes);
+app.use("/api/reports", reportsRoutes);
 
 const PORT = process.env.PORT || 4001;
 app.listen(PORT, () => console.log(`Backend running on port ${PORT}`));

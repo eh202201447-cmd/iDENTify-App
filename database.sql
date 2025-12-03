@@ -15,7 +15,9 @@ CREATE TABLE IF NOT EXISTS `patients` (
   `gender` VARCHAR(50),
   `address` TEXT,
   `contact_number` VARCHAR(50),
-  `email` VARCHAR(255)
+  `email` VARCHAR(255),
+  `medical_alerts` TEXT,
+  `vitals` JSON
 );
 
 CREATE TABLE IF NOT EXISTS `appointments` (
@@ -23,6 +25,7 @@ CREATE TABLE IF NOT EXISTS `appointments` (
   `patient_id` INT,
   `dentist_id` INT,
   `appointment_datetime` DATETIME,
+  `end_datetime` DATETIME,
   `reason` TEXT,
   `notes` TEXT,
   `status` VARCHAR(50),
@@ -43,14 +46,6 @@ CREATE TABLE IF NOT EXISTS `walk_in_queue` (
   FOREIGN KEY (`appointment_id`) REFERENCES `appointments`(`id`) ON DELETE SET NULL,
   FOREIGN KEY (`dentist_id`) REFERENCES `dentists`(`id`) ON DELETE SET NULL
 );
-
--- You can optionally insert the initial dentist data
-INSERT INTO `dentists` (`name`, `specialty`) VALUES
-('Dr. Paul Zaragoza', 'General Dentist'),
-('Dr. Erica Aquino', 'Orthodontist'),
-('Dr. Hernane Benedicto', 'Prosthodontist');
-
--- New tables for Patient Form sections
 
 CREATE TABLE IF NOT EXISTS `tooth_conditions` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
@@ -84,17 +79,8 @@ CREATE TABLE IF NOT EXISTS `medications` (
   FOREIGN KEY (`patient_id`) REFERENCES `patients`(`id`) ON DELETE CASCADE
 );
 
--- Sample data for a patient (assuming patient with id=1 exists)
-
--- Tooth conditions
-INSERT INTO `tooth_conditions` (`patient_id`, `cell_key`, `condition_code`, `status`, `is_shaded`) VALUES
-(1, 'box-18', 'F', 'completed', 0),
-(1, 'circle-10', NULL, 'completed', 1);
-
--- Treatment timeline
-INSERT INTO `treatment_timeline` (`patient_id`, `start_time`, `end_time`, `provider`, `procedure_text`, `notes`) VALUES
-(1, '09:05', '09:20', 'Dr. Paul Zaragoza', 'Cleaning', 'Patient was cooperative.');
-
--- Medications
-INSERT INTO `medications` (`patient_id`, `medicine`, `dosage`, `frequency`, `notes`) VALUES
-(1, 'Ibuprofen', '400mg', 'q8h', 'After meals');
+-- Initial Data
+INSERT INTO `dentists` (`name`, `specialty`) VALUES
+('Dr. Paul Zaragoza', 'General Dentist'),
+('Dr. Erica Aquino', 'Orthodontist'),
+('Dr. Hernane Benedicto', 'Prosthodontist');

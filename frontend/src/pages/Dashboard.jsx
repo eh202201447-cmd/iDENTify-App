@@ -1,7 +1,6 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import "../styles/pages/Dashboard.css";
 import WeeklyBarChart from "../components/WeeklyBarChart.jsx";
-import { dentists as staticDentists } from "../data/dentists";
 import AddWalkInModal from "../components/AddWalkInModal";
 import useAppStore from "../store/useAppStore";
 import useApi from "../hooks/useApi";
@@ -18,8 +17,12 @@ function Dashboard() {
   const [isAddWalkInOpen, setIsAddWalkInOpen] = useState(false);
   // Note: Today appointments derived from store `appointments` — dynamic list is computed below.
 
+  useEffect(() => {
+    api.loadDentists();
+  }, []);
+
   const inTreatmentStatuses = ["On Chair", "In Treatment", "Treatment", "With patient"];
-  const dentistsWithStatus = (dentists.length ? dentists : staticDentists).map((dentist) => {
+  const dentistsWithStatus = dentists.map((dentist) => {
     const byQueueName = queue.filter(
       (q) => q.assignedDentist === dentist.name || q.dentist_id === dentist.id
     );
@@ -52,7 +55,7 @@ function Dashboard() {
 
   const completedAppointments = appointments.filter((a) => a.status === "Done").length;
   const totalAppointments = appointments.length;
-  const clinicLoad = (completedAppointments / totalAppointments) * 100;
+  const clinicLoad = totalAppointments > 0 ? (completedAppointments / totalAppointments) * 100 : 0;
 
   return (
     <div className="dashboard-page">
@@ -138,15 +141,30 @@ function Dashboard() {
             onClose={() => setIsAddWalkInOpen(false)}
               onAddPatient={async (patientData) => {
                 try {
-                  const created = await api.createPatient({ ...patientData });
+                  // FIX: Prepare payload to match backend expectations
+                  const patientPayload = {
+                    full_name: patientData.full_name,
+                    sex: patientData.sex,
+                    contact: patientData.contact,
+                    // Store age in vitals since there is no 'age' column in DB
+                    vitals: { age: patientData.age },
+                    medicalAlerts: [] // Default empty
+                  };
+
+                  const created = await api.createPatient(patientPayload);
                   const id = created?.id;
-                  await api.addQueue({
-                    patient_id: id,
-                    source: 'walk-in',
-                    status: 'Checked-In',
-                    notes: patientData.notes || '',
-                    checkedInTime: new Date().toISOString(),
-                  });
+                  
+                  if (id) {
+                    await api.addQueue({
+                      patient_id: id,
+                      source: 'walk-in',
+                      status: 'Checked-In',
+                      notes: patientData.notes || '',
+                      checkedInTime: new Date().toISOString(),
+                    });
+                    // Refresh queue to show it immediately
+                    await api.loadQueue(); 
+                  }
                   setIsAddWalkInOpen(false);
                 } catch (err) {
                   console.error('Failed to add walk-in', err);

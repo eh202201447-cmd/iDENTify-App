@@ -1,17 +1,11 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
-import { patients } from '../data/patients';
-import { appointments } from '../data/appointments';
-import { queue } from '../data/queue';
-import { dentists } from '../data/dentists';
-import { treatments } from '../data/treatments';
-
-const useAppStore = create(persist((set, get) => ({
-  patients,
-  appointments,
-  queue,
-  dentists,
-  treatments,
+const useAppStore = create((set, get) => ({
+  patients: [],
+  appointments: [],
+  queue: [],
+  dentists: [],
+  treatments: [],
+  reports: {},
 
   addPatient: (patient) =>
     set((state) => ({
@@ -75,15 +69,9 @@ const useAppStore = create(persist((set, get) => ({
   setPatients: (patients) => set({ patients }),
   setAppointments: (appointments) => set({ appointments }),
   setQueue: (queue) => set({ queue }),
-}), {
-  name: 'identify-app-store',
-  partialize: (state) => ({
-    patients: state.patients,
-    appointments: state.appointments,
-    queue: state.queue,
-    dentists: state.dentists,
-    treatments: state.treatments,
-  }),
+  setDentists: (dentists) => set({ dentists }),
+  setTreatments: (treatments) => set({ treatments }),
+  setReports: (reports) => set({ reports }),
 }));
 
 export default useAppStore;

@@ -3,7 +3,10 @@ import toast from "react-hot-toast";
 import "../styles/components/EditAppointmentModal.css";
 
 function toMinutes(timeString) {
-  const [time, meridiem] = timeString.split(" ");
+  if (!timeString) return 0;
+  const parts = timeString.split(" ");
+  if (parts.length < 2) return 0;
+  const [time, meridiem] = parts;
   const [hourStr, minuteStr] = time.split(":");
   let hour = Number(hourStr);
   const minute = Number(minuteStr);
@@ -13,15 +16,18 @@ function toMinutes(timeString) {
 }
 
 function EditAppointmentModal({ appointment, onSave, onCancel, dentists = [] }) {
+  if (!appointment) return null;
+
   const [formData, setFormData] = useState({
-    timeStart: appointment.timeStart,
-    timeEnd: appointment.timeEnd,
+    timeStart: appointment.timeStart || "",
+    timeEnd: appointment.timeEnd || "",
     dentist_id:
-      appointment.dentist_id || dentists.find((d) => d.name === appointment.dentist)?.id,
+      appointment.dentist_id || dentists.find((d) => d.name === appointment.dentist)?.id || "",
     dentist:
-      appointment.dentist || dentists.find((d) => d.id === appointment.dentist_id)?.name,
-    procedure: appointment.procedure,
-    notes: appointment.notes,
+      appointment.dentist || dentists.find((d) => d.id === appointment.dentist_id)?.name || "",
+    // Robust fallback: use procedure OR reason OR empty string
+    procedure: appointment.procedure || appointment.reason || "",
+    notes: appointment.notes || "",
     addReminder: false,
     isPriority: false,
   });
@@ -36,21 +42,30 @@ function EditAppointmentModal({ appointment, onSave, onCancel, dentists = [] }) 
   };
 
   const handleSave = () => {
-    if (toMinutes(formData.timeEnd) < toMinutes(formData.timeStart)) {
-      toast.error("End time cannot be before start time.");
+    if (formData.timeStart && formData.timeEnd) {
+        if (toMinutes(formData.timeEnd) <= toMinutes(formData.timeStart)) {
+        toast.error("End time cannot be before or equal to start time.");
+        return;
+        }
+    }
+
+    const proc = formData.procedure || "";
+    if (!proc.trim()) {
+      toast.error("Procedure cannot be empty.");
       return;
     }
-    if (!formData.procedure.trim() || !formData.notes.trim()) {
-      toast.error("Procedure and notes cannot be empty.");
-      return;
-    }
+    
     setIsLoading(true);
     setTimeout(() => {
-      const dentistNameFromId = dentists.find((d) => d.id === formData.dentist_id)?.name;
-      onSave({ ...appointment, ...formData, dentist: dentistNameFromId || formData.dentist });
+      const dentistNameFromId = dentists.find((d) => d.id === Number(formData.dentist_id))?.name;
+      onSave({ 
+        ...appointment, 
+        ...formData, 
+        dentist_id: Number(formData.dentist_id),
+        dentist: dentistNameFromId || formData.dentist 
+      });
       setIsLoading(false);
-      toast.success("Appointment saved successfully.");
-    }, 1000);
+    }, 500);
   };
 
   return (
@@ -66,6 +81,7 @@ function EditAppointmentModal({ appointment, onSave, onCancel, dentists = [] }) 
               name="timeStart"
               value={formData.timeStart}
               onChange={handleChange}
+              placeholder="e.g. 09:00 AM"
             />
           </div>
           <div className="form-group">
@@ -76,6 +92,7 @@ function EditAppointmentModal({ appointment, onSave, onCancel, dentists = [] }) 
               name="timeEnd"
               value={formData.timeEnd}
               onChange={handleChange}
+              placeholder="e.g. 09:30 AM"
             />
           </div>
           <div className="form-group full-width">
@@ -94,6 +111,7 @@ function EditAppointmentModal({ appointment, onSave, onCancel, dentists = [] }) 
                 }));
               }}
             >
+              <option value="">Select Dentist</option>
               {dentists.map((d) => (
                 <option key={d.id} value={d.id}>
                   {d.name}
@@ -121,7 +139,7 @@ function EditAppointmentModal({ appointment, onSave, onCancel, dentists = [] }) 
               rows="3"
             ></textarea>
           </div>
-          <div className="form-group checkbox-group">
+          {/* <div className="form-group checkbox-group">
             <input
               type="checkbox"
               id="addReminder"
@@ -140,7 +158,7 @@ function EditAppointmentModal({ appointment, onSave, onCancel, dentists = [] }) 
               onChange={handleChange}
             />
             <label htmlFor="isPriority">Mark priority</label>
-          </div>
+          </div> */}
         </div>
         <div className="modal-actions">
           <button type="button" onClick={onCancel}>

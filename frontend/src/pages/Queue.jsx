@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import "../styles/pages/Queue.css";
@@ -16,34 +16,54 @@ const dentistAvailabilityMinutes = {
 
 function Queue() {
   const navigate = useNavigate();
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const api = useApi();
   const queue = useAppStore((state) => state.queue);
   const patients = useAppStore((state) => state.patients);
   const dentists = useAppStore((state) => state.dentists);
-  // patients are created via the API hook; store gets updated automatically
-  // queue status changes are performed through API to keep backend in sync
-  const api = useApi();
-
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const [draggingId, setDraggingId] = useState(null);
+
+  useEffect(() => {
+    // Load both queue and dentists to ensure assignments work
+    const loadData = async () => {
+      try {
+        await Promise.all([api.loadQueue(), api.loadDentists()]);
+      } catch (e) {
+        console.error("Failed to load queue data", e);
+      }
+    };
+    loadData();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleAddWalkIn = async (patientData) => {
     try {
-      const created = await api.createPatient({
-        ...patientData,
+      // 1. Create Patient
+      // Map AddWalkInModal fields to backend fields
+      const patientPayload = {
+        full_name: patientData.full_name,
+        gender: patientData.sex, // Map sex -> gender
+        contact_number: patientData.contact, // Map contact -> contact_number
         medicalAlerts: [],
-      });
-      const patientId = created?.id;
+        vitals: { age: patientData.age } // Store age in vitals
+      };
 
-      console.log('Created patient', patientId);
-      const dentist = dentists.find(d => d.name === patientData.assignedDentist);
+      const createdPatient = await api.createPatient(patientPayload);
+      const patientId = createdPatient?.id;
+
+      if (!patientId) throw new Error("Failed to create patient ID");
+
+      // 2. Add to Queue
+      const dentistObj = dentists.find(d => d.name === patientData.assignedDentist);
+      
       await api.addQueue({
         patient_id: patientId,
-        dentist_id: dentist?.id,
+        dentist_id: dentistObj?.id, // Send ID, not name
         source: "walk-in",
         status: "Checked-In",
         notes: patientData.notes,
         checkedInTime: new Date().toISOString(),
       });
+
       toast.success("Walk-in patient added to queue.");
       setIsModalOpen(false);
     } catch (err) {
@@ -52,14 +72,20 @@ function Queue() {
     }
   };
 
-  const calculateWaitingTime = (index, dentist) => {
-    const availabilityOffset = dentistAvailabilityMinutes[dentist] || 0;
+  const calculateWaitingTime = (index, dentistName) => {
+    const availabilityOffset = dentistAvailabilityMinutes[dentistName] || 0;
     const minutes = index * averageTreatmentMinutes + availabilityOffset;
     return minutes <= 0 ? "Now" : `${minutes} min`;
   };
 
-  const handleAction = (patientId) => {
-    navigate(`/app/patient/${patientId}/`);
+  // MODIFIED: Accepts the full queue item object
+  const handleAction = (queueItem) => {
+    navigate(`/app/patient/${queueItem.patient_id}/`, {
+      state: { 
+        dentistId: queueItem.dentist_id, // Pass the assigned dentist ID
+        status: queueItem.status
+      }
+    });
   };
 
   const handleStatusChange = async (id, status) => {
@@ -73,11 +99,10 @@ function Queue() {
 
   const handleDragStart = (id) => setDraggingId(id);
   const handleDragOver = (e) => e.preventDefault();
-  const handleDrop = () => {
-    // This is a presentational feature and does not need to be connected to the global store
-  };
+  const handleDrop = () => {};
 
   const calculateWaitingTimeSince = (checkedInTime) => {
+    if (!checkedInTime) return "--";
     const now = new Date();
     const checkedIn = new Date(checkedInTime);
     const diff = now - checkedIn;
@@ -90,15 +115,21 @@ function Queue() {
     () =>
       queue
         .filter((item) => item.status !== "Done")
-          .map((item, index) => {
+        .map((item, index) => {
+          // Fallback to item.full_name if patient object isn't found
           const patient = patients.find((p) => p.id === item.patient_id);
+          const patientName = patient ? (patient.name || patient.full_name) : (item.full_name || "Unknown");
+          
+          // Fallback to item.dentist_name if dentist object isn't found
           const dentist = dentists.find((d) => d.id === item.dentist_id);
+          const dentistName = dentist ? dentist.name : (item.dentist_name || "Unassigned");
+
           return {
             ...item,
             number: index + 1,
-            name: patient ? (patient.name || patient.full_name) : "Unknown",
-            assignedDentist: dentist ? dentist.name : "Unassigned",
-            waitingTime: calculateWaitingTime(index, dentist ? dentist.name : ""),
+            name: patientName,
+            assignedDentist: dentistName,
+            waitingTime: calculateWaitingTime(index, dentistName),
           };
         }),
     [queue, patients, dentists]
@@ -124,10 +155,6 @@ function Queue() {
         <StatusBadge status="No-Show" />
         <StatusBadge status="Cancelled" />
       </div>
-      <p className="queue-subtitle">
-        Drag to reprioritize emergencies, assign a dentist, and track wait
-        estimates.
-      </p>
 
       <AddWalkInModal
         isOpen={isModalOpen}
@@ -151,81 +178,52 @@ function Queue() {
             </tr>
           </thead>
           <tbody>
-            {queueWithDetails.map((q) => (
-              <tr
-                key={q.id}
-                className={`queue-row ${
-                  draggingId === q.id ? "is-dragging" : ""
-                }`}
-                draggable
-                onDragStart={() => handleDragStart(q.id)}
-                onDragOver={handleDragOver}
-                onDrop={() => handleDrop(q.id)}
-              >
-                <td
-                  className="drag-handle"
+            {queueWithDetails.length === 0 ? (
+               <tr><td colSpan="9" style={{textAlign: 'center', padding: '2rem'}}>No patients in queue.</td></tr>
+            ) : (
+              queueWithDetails.map((q) => (
+                <tr
+                  key={q.id}
+                  className={`queue-row ${draggingId === q.id ? "is-dragging" : ""}`}
                   draggable
                   onDragStart={() => handleDragStart(q.id)}
+                  onDragOver={handleDragOver}
+                  onDrop={() => handleDrop(q.id)}
                 >
-                  ⋮⋮
-                </td>
-                <td>{q.number.toString().padStart(2, "0")}</td>
-                <td>{q.name}</td>
-                <td>
-                  <select
-                    className="status-select"
-                    value={q.status}
-                    onChange={(e) => handleStatusChange(q.id, e.target.value)}
-                  >
-                    <option value="Checked-In">Checked-In</option>
-                    <option value="Waiting">Waiting</option>
-                    <option value="On Chair">On Chair</option>
-                    <option value="Treatment">Treatment</option>
-                    <option value="Payment / Billing">Payment / Billing</option>
-                    <option value="Done">Done</option>
-                    <option value="No-Show">No-Show</option>
-                    <option value="Cancelled">Cancelled</option>
-                  </select>
-                </td>
-                <td>
-                  <select
-                    className="queue-dentist-select"
-                    value={q.assignedDentist}
-                    disabled
-                  >
-                    <option value="">Assign Dentist</option>
-                    {dentists.map((d) => (
-                      <option key={d.id} value={d.name}>
-                        {d.name}
-                      </option>
-                    ))}
-                  </select>
-                </td>
-                <td>
-                  <span className="wait-chip">{q.waitingTime}</span>
-                </td>
-                <td>
-                  <div>Checked in: {calculateWaitingTimeSince(q.checkedInTime || q.checkin_time)}</div>
-                </td>
-                <td>
-                  <textarea
-                    className="staff-note-input"
-                    placeholder="Add staff notes..."
-                    // ensure value is never null (React warns) — fall back to empty string
-                    value={q.notes ?? ""}
-                    readOnly
-                  />
-                </td>
-                <td>
-                  <button
-                    className="action-btn"
-                    onClick={() => handleAction(q.patient_id)}
-                  >
-                    Start
-                  </button>
-                </td>
-              </tr>
-            ))}
+                  <td className="drag-handle">⋮⋮</td>
+                  <td>{q.number.toString().padStart(2, "0")}</td>
+                  <td>{q.name}</td>
+                  <td>
+                    <select
+                      className="status-select"
+                      value={q.status}
+                      onChange={(e) => handleStatusChange(q.id, e.target.value)}
+                    >
+                      <option value="Checked-In">Checked-In</option>
+                      <option value="Waiting">Waiting</option>
+                      <option value="On Chair">On Chair</option>
+                      <option value="Treatment">Treatment</option>
+                      <option value="Payment / Billing">Payment / Billing</option>
+                      <option value="Done">Done</option>
+                      <option value="No-Show">No-Show</option>
+                      <option value="Cancelled">Cancelled</option>
+                    </select>
+                  </td>
+                  <td>{q.assignedDentist}</td>
+                  <td><span className="wait-chip">{q.waitingTime}</span></td>
+                  <td>Checked in: {calculateWaitingTimeSince(q.time_added || q.checkedInTime)}</td>
+                  <td>
+                    <div className="staff-note">{q.notes || '-'}</div>
+                  </td>
+                  <td>
+                    {/* MODIFIED: Pass the whole object 'q' */}
+                    <button className="action-btn" onClick={() => handleAction(q)}>
+                      Start
+                    </button>
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>

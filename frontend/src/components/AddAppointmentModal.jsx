@@ -1,23 +1,32 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import toast from "react-hot-toast";
 import "../styles/components/EditAppointmentModal.css"; // reuse modal styles
 
-function toMinutes(timeString) {
-  const [time, meridiem] = timeString.split(" ");
-  const [hourStr, minuteStr] = time.split(":");
-  let hour = Number(hourStr);
-  const minute = Number(minuteStr);
-  if (meridiem === "PM" && hour !== 12) hour += 12;
-  if (meridiem === "AM" && hour === 12) hour = 0;
-  return hour * 60 + minute;
+// Helper to convert 24h "HH:MM" string to "HH:MM AM/PM" for the backend
+function formatTime12Hour(time24) {
+  if (!time24) return "";
+  const [hours, minutes] = time24.split(":");
+  let h = parseInt(hours, 10);
+  const m = parseInt(minutes, 10);
+  const ampm = h >= 12 ? "PM" : "AM";
+  h = h % 12;
+  h = h ? h : 12; // the hour '0' should be '12'
+  return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")} ${ampm}`;
+}
+
+// Helper for validation comparison
+function toMinutes24(timeString) {
+  if (!timeString) return 0;
+  const [hours, minutes] = timeString.split(":").map(Number);
+  return hours * 60 + minutes;
 }
 
 function AddAppointmentModal({ isOpen, onClose, dentists = [], onSave }) {
   const [form, setForm] = useState({
     patient_name: "",
     dentist_id: "",
-    timeStart: "",
-    timeEnd: "",
+    timeStart: "", // Stores "HH:MM" (24h) for the input
+    timeEnd: "",   // Stores "HH:MM" (24h) for the input
     procedure: "",
     notes: "",
     status: "Scheduled",
@@ -45,19 +54,30 @@ function AddAppointmentModal({ isOpen, onClose, dentists = [], onSave }) {
       toast.error("Procedure is required.");
       return;
     }
-    if (form.timeStart && form.timeEnd && toMinutes(form.timeEnd) < toMinutes(form.timeStart)) {
-      toast.error("End time cannot be before start time.");
+    if (!form.timeStart || !form.timeEnd) {
+      toast.error("Please select both start and end times.");
+      return;
+    }
+    
+    // Compare times using the raw 24h values from state
+    if (toMinutes24(form.timeEnd) <= toMinutes24(form.timeStart)) {
+      toast.error("End time must be after start time.");
       return;
     }
 
     setIsSaving(true);
     try {
+      // Format data for backend
       await onSave({
         ...form,
         dentist_id: Number(form.dentist_id),
+        timeStart: formatTime12Hour(form.timeStart), // Convert to 12h for DB
+        timeEnd: formatTime12Hour(form.timeEnd),     // Convert to 12h for DB
       });
+      // Close handled by parent or success actions
     } catch (error) {
-      // Error is handled by the caller, but we stop the loading state
+      console.error(error);
+      toast.error("Failed to save appointment.");
     } finally {
       setIsSaving(false);
     }
@@ -98,6 +118,7 @@ function AddAppointmentModal({ isOpen, onClose, dentists = [], onSave }) {
           <div className="form-group">
             <label htmlFor="timeStart">Time Start</label>
             <input
+              type="time"
               id="timeStart"
               name="timeStart"
               value={form.timeStart}
@@ -106,7 +127,13 @@ function AddAppointmentModal({ isOpen, onClose, dentists = [], onSave }) {
           </div>
           <div className="form-group">
             <label htmlFor="timeEnd">Time End</label>
-            <input id="timeEnd" name="timeEnd" value={form.timeEnd} onChange={handleChange} />
+            <input
+              type="time"
+              id="timeEnd"
+              name="timeEnd"
+              value={form.timeEnd}
+              onChange={handleChange}
+            />
           </div>
           <div className="form-group full-width">
             <label htmlFor="procedure">Procedure</label>
@@ -115,11 +142,18 @@ function AddAppointmentModal({ isOpen, onClose, dentists = [], onSave }) {
               name="procedure"
               value={form.procedure}
               onChange={handleChange}
+              placeholder="e.g. Cleaning, Root Canal"
             />
           </div>
           <div className="form-group full-width">
             <label htmlFor="notes">Notes</label>
-            <textarea id="notes" name="notes" value={form.notes} onChange={handleChange} />
+            <textarea 
+              id="notes" 
+              name="notes" 
+              value={form.notes} 
+              onChange={handleChange} 
+              rows={3}
+            />
           </div>
           <div className="modal-actions full-width">
             <button type="button" onClick={onClose}>

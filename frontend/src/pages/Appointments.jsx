@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import "../styles/pages/Appointments.css";
@@ -10,7 +10,9 @@ import useAppStore from "../store/useAppStore";
 import useApi from "../hooks/useApi";
 
 function toMinutes(timeString) {
+  if (!timeString) return 0;
   const [time, meridiem] = timeString.split(" ");
+  if (!time || !meridiem) return 0;
   const [hourStr, minuteStr] = time.split(":");
   let hour = Number(hourStr);
   const minute = Number(minuteStr);
@@ -21,14 +23,24 @@ function toMinutes(timeString) {
 
 function Appointments() {
   const navigate = useNavigate();
+  const api = useApi();
+
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        await Promise.all([api.loadAppointments(), api.loadPatients(), api.loadDentists()]);
+      } catch (err) {
+        console.error("Error loading appointment data", err);
+      }
+    };
+    loadData();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const appointments = useAppStore((state) => state.appointments);
   const patients = useAppStore((state) => state.patients);
   const dentists = useAppStore((state) => state.dentists);
-  // appointment status updates now use API calls to ensure backend sync
-  // note: appointment updates are handled via useApi to sync with backend
-  // deletes performed via API; store will be synced by the useApi hook
   const queue = useAppStore((state) => state.queue);
-  const api = useApi();
+  
   const [search, setSearch] = useState("");
   const [activeContactId, setActiveContactId] = useState(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -43,7 +55,7 @@ function Appointments() {
   });
 
   const procedures = useMemo(
-    () => Array.from(new Set(appointments.map((a) => a.procedure))),
+    () => Array.from(new Set(appointments.map((a) => a.procedure || a.reason).filter(Boolean))),
     [appointments]
   );
 
@@ -64,49 +76,42 @@ function Appointments() {
     }
 
     if (!patientId) {
-      toast.error("Could not find patient ID.");
+      toast.error("Could not find patient ID. Ensure patient is registered.");
       return;
     }
 
-    // update appointment status on server & store
     try {
       await api.updateAppointment(appointment.id, { status: 'Checked-In' });
-    } catch (err) {
-      console.error('Failed to update appointment status', err);
-      toast.error('Failed to update appointment status');
-      return;
-    }
-    // Add to queue on server & store
-    try {
       await api.addQueue({
-      patient_id: patientId,
-      dentist_id:
-        appointment.dentist_id || dentists.find((d) => d.name === appointment.dentist)?.id,
-      appointment_id: appointment.id,
-      source: "appointment",
-      status: "Checked-In",
-      notes: appointment.procedure,
-      checkedInTime: new Date().toISOString(),
+        patient_id: patientId,
+        dentist_id: appointment.dentist_id || dentists.find((d) => d.name === appointment.dentist)?.id,
+        appointment_id: appointment.id,
+        source: "appointment",
+        status: "Checked-In",
+        notes: appointment.procedure || appointment.reason,
+        checkedInTime: new Date().toISOString(),
       });
+      toast.success("Patient added to queue.");
+      navigate(`/app/patient/${patientId}`);
     } catch (err) {
-      console.error('Failed to add to queue', err);
-      toast.error('Failed to add patient to queue');
-      return;
+      console.error('Failed to start appointment', err);
+      toast.error('Failed to update status');
     }
-
-    toast.success("Patient added to queue.");
-    navigate(`/app/patient/${patientId}`);
   };
 
   const conflicts = useMemo(() => {
     const dentistMap = new Map();
 
     appointments.forEach((appt) => {
+      if (!appt.timeStart || !appt.timeEnd) return;
       const start = toMinutes(appt.timeStart);
       const end = toMinutes(appt.timeEnd);
-      const existing = dentistMap.get(appt.dentist) || [];
-      existing.push({ ...appt, start, end });
-      dentistMap.set(appt.dentist, existing);
+      // Resolve dentist name for conflict grouping
+      const dentistName = dentists.find(d => d.id === appt.dentist_id)?.name || appt.dentist || "Unassigned";
+      
+      const existing = dentistMap.get(dentistName) || [];
+      existing.push({ ...appt, start, end, dentistName });
+      dentistMap.set(dentistName, existing);
     });
 
     const conflictMessages = [];
@@ -117,9 +122,13 @@ function Appointments() {
           const first = list[i];
           const second = list[j];
           if (second.start < first.end && second.end > first.start) {
+            // Resolve patient names for message
+            const p1 = patients.find(p => p.id === first.patient_id)?.full_name || first.patient;
+            const p2 = patients.find(p => p.id === second.patient_id)?.full_name || second.patient;
+            
             conflictMessages.push({
               id: `${first.id}-${second.id}`,
-              message: `${first.dentist}: ${first.patient} (${first.timeStart}-${first.timeEnd}) overlaps with ${second.patient} (${second.timeStart}-${second.timeEnd})`,
+              message: `${first.dentistName}: ${p1} overlaps with ${p2}`,
             });
           }
         }
@@ -127,28 +136,36 @@ function Appointments() {
     });
 
     return conflictMessages;
-  }, [appointments]);
+  }, [appointments, dentists, patients]);
 
   const filteredAppointments = useMemo(() => {
     return appointments.filter((appt) => {
+      // 1. Resolve Data References
+      const dentistName = dentists.find((d) => d.id === appt.dentist_id)?.name || appt.dentist || "";
+      const patientName = patients.find((p) => p.id === appt.patient_id)?.full_name || appt.patient || "";
+      const proc = appt.procedure || appt.reason || "";
+
+      // 2. Search Filter
       const searchMatch = [
-        appt.patient,
-        appt.dentist,
+        patientName,
+        dentistName,
         appt.status,
-        appt.procedure,
+        proc,
         appt.notes,
       ]
         .join(" ")
         .toLowerCase()
         .includes(search.toLowerCase());
 
+      // 3. Dropdown Filters
       const dentistMatch =
-        filters.dentist === "all" || appt.dentist === filters.dentist;
+        filters.dentist === "all" || dentistName === filters.dentist;
       const statusMatch =
         filters.status === "all" || appt.status === filters.status;
       const procedureMatch =
-        filters.procedure === "all" || appt.procedure === filters.procedure;
+        filters.procedure === "all" || proc === filters.procedure;
 
+      // 4. Time Filter
       let timeMatch = true;
       const startMinutes = toMinutes(appt.timeStart);
       if (filters.time === "morning") timeMatch = startMinutes < 12 * 60;
@@ -166,6 +183,8 @@ function Appointments() {
     });
   }, [
     appointments,
+    dentists,
+    patients,
     filters.dentist,
     filters.procedure,
     filters.status,
@@ -220,7 +239,7 @@ function Appointments() {
   const handleAddAppointment = async (appointmentData) => {
     try {
       let patientId;
-      const existingPatient = patients.find(p => p.full_name === appointmentData.patient_name);
+      const existingPatient = patients.find(p => p.full_name?.toLowerCase() === appointmentData.patient_name?.toLowerCase());
 
       if (existingPatient) {
         patientId = existingPatient.id;
@@ -245,7 +264,7 @@ function Appointments() {
   };
 
   const handleReschedule = () => {
-    navigate("/app/appointments");
+    toast("Please edit the appointment time to resolve the conflict.");
   };
 
   return (
@@ -381,7 +400,7 @@ function Appointments() {
                 <td>{patients.find((p) => p.id === a.patient_id)?.full_name || a.patient}</td>
                 <td>{dentists.find((d) => d.id === a.dentist_id)?.name || a.dentist}</td>
                 <td>
-                  <span className="badge badge-neutral">{a.procedure}</span>
+                  <span className="badge badge-neutral">{a.procedure || a.reason}</span>
                 </td>
                 <td>
                   <StatusBadge status={a.status} />
@@ -405,13 +424,13 @@ function Appointments() {
                   {activeContactId === a.id && (
                     <div className="contact-popover">
                       <p>
-                        <strong>Phone:</strong> {patients.find((p) => p.id === a.patient_id)?.contact || a.contact?.phone || ''}
+                        <strong>Phone:</strong> {patients.find((p) => p.id === a.patient_id)?.contact_number || patients.find((p) => p.id === a.patient_id)?.contact || a.contact?.phone || ''}
                       </p>
                       <p>
                         <strong>Email:</strong> {patients.find((p) => p.id === a.patient_id)?.email || a.contact?.email || ''}
                       </p>
                       <p>
-                        <strong>Birthday:</strong> {patients.find((p) => p.id === a.patient_id)?.birthday || a.contact?.birthday || ''}
+                        <strong>Birthday:</strong> {patients.find((p) => p.id === a.patient_id)?.birthdate || a.contact?.birthday || ''}
                       </p>
                       <p>
                         <strong>Address:</strong> {patients.find((p) => p.id === a.patient_id)?.address || a.contact?.address || ''}
