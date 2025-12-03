@@ -25,6 +25,7 @@ function AddAppointmentModal({ isOpen, onClose, dentists = [], onSave }) {
   const [form, setForm] = useState({
     patient_name: "",
     dentist_id: "",
+    appointmentDate: new Date().toISOString().split('T')[0], // YYYY-MM-DD
     timeStart: "", // Stores "HH:MM" (24h) for the input
     timeEnd: "",   // Stores "HH:MM" (24h) for the input
     procedure: "",
@@ -50,9 +51,9 @@ function AddAppointmentModal({ isOpen, onClose, dentists = [], onSave }) {
       toast.error("Please select a dentist.");
       return;
     }
-    if (!form.procedure.trim()) {
-      toast.error("Procedure is required.");
-      return;
+    if (!form.appointmentDate) {
+        toast.error("Please select a date.");
+        return;
     }
     if (!form.timeStart || !form.timeEnd) {
       toast.error("Please select both start and end times.");
@@ -67,12 +68,15 @@ function AddAppointmentModal({ isOpen, onClose, dentists = [], onSave }) {
 
     setIsSaving(true);
     try {
-      // Format data for backend
+      // Construct the full datetime string and format for backend
+      const fullTimeStart = `${form.appointmentDate} ${formatTime12Hour(form.timeStart)}`;
+      const fullTimeEnd = `${form.appointmentDate} ${formatTime12Hour(form.timeEnd)}`;
+
       await onSave({
         ...form,
         dentist_id: Number(form.dentist_id),
-        timeStart: formatTime12Hour(form.timeStart), // Convert to 12h for DB
-        timeEnd: formatTime12Hour(form.timeEnd),     // Convert to 12h for DB
+        timeStart: fullTimeStart,
+        timeEnd: fullTimeEnd,
       });
       // Close handled by parent or success actions
     } catch (error) {
@@ -114,6 +118,19 @@ function AddAppointmentModal({ isOpen, onClose, dentists = [], onSave }) {
                 </option>
               ))}
             </select>
+          </div>
+          <div className="form-group">
+            <label htmlFor="appointmentDate">Date</label>
+            <input
+              type="date"
+              id="appointmentDate"
+              name="appointmentDate"
+              value={form.appointmentDate}
+              onChange={handleChange}
+            />
+          </div>
+          <div className="form-group">
+            {/* Empty group for layout */}
           </div>
           <div className="form-group">
             <label htmlFor="timeStart">Time Start</label>

@@ -93,7 +93,6 @@ router.get("/", async (req, res) => {
       [today]
     );
 
-    // Calculate Average Duration (in minutes) for today's done appointments
     const [durationRes] = await pool.query(
       `SELECT AVG(TIMESTAMPDIFF(MINUTE, appointment_datetime, end_datetime)) as avg_min 
        FROM appointments 
@@ -101,7 +100,7 @@ router.get("/", async (req, res) => {
       [today]
     );
 
-    // --- Dentist Performance ---
+    // --- Dentist Performance (only for 'Done' appointments) ---
     const [dentistPerformance] = await pool.query(`
       SELECT
         d.id,
@@ -113,35 +112,42 @@ router.get("/", async (req, res) => {
       GROUP BY d.id, d.name
     `, [today]);
 
-    // --- Treatment Distribution (Using 'reason' column) ---
-    for (const dentist of dentistPerformance) {
-      const [distribution] = await pool.query(`
-        SELECT
-          reason as treatment,
-          COUNT(id) as count
-        FROM appointments
-        WHERE dentist_id = ? AND DATE(appointment_datetime) = ?
-        GROUP BY reason
-      `, [dentist.id, today]);
-      
-      dentist.treatmentDistribution = distribution.reduce((acc, row) => {
-        acc[row.treatment || 'Unspecified'] = row.count;
+    // --- Treatment Distribution (for all appointments today, not just 'Done') ---
+    const [distributionRes] = await pool.query(`
+      SELECT
+        dentist_id,
+        reason as treatment,
+        COUNT(id) as count
+      FROM appointments
+      WHERE DATE(appointment_datetime) = ? AND dentist_id IS NOT NULL
+      GROUP BY dentist_id, reason
+    `, [today]);
+    
+    // Map the distribution results to the dentists
+    const distributionMap = distributionRes.reduce((acc, row) => {
+        if (!acc[row.dentist_id]) {
+            acc[row.dentist_id] = {};
+        }
+        acc[row.dentist_id][row.treatment || 'Unspecified'] = row.count;
         return acc;
-      }, {});
-    }
+    }, {});
+
+    dentistPerformance.forEach(dentist => {
+        dentist.treatmentDistribution = distributionMap[dentist.id] || {};
+    });
 
     res.json({
       dailySummary: {
-        patientsSeen: patientsSeenRes[0].count,
-        proceduresDone: proceduresRes[0].count,
+        patientsSeen: patientsSeenRes[0].count || 0,
+        proceduresDone: proceduresRes[0].count || 0,
         newPatients: 0, // Requires 'created_at' on patients table to calculate accurately
         avgTreatmentDuration: durationRes[0].avg_min ? `${Math.round(durationRes[0].avg_min)} min` : "0 min",
       },
       dentistPerformance,
     });
   } catch (err) {
-    console.error(err);
-    res.status(500).send("Server Error");
+    console.error("Reports API Error:", err.message);
+    res.status(500).json({ message: err.message });
   }
 });
 

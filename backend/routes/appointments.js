@@ -2,27 +2,51 @@ const express = require("express");
 const router = express.Router();
 const db = require("../db");
 
-// Helper to parse time strings like "09:00 AM" into a Date object
-function parseTime(timeStr) {
-  if (!timeStr) return null;
-  const date = new Date();
-  const [time, meridiem] = timeStr.split(' ');
-  let [hours, minutes] = time.split(':');
-  hours = parseInt(hours);
-  if (meridiem === 'PM' && hours < 12) hours += 12;
-  if (meridiem === 'AM' && hours === 12) hours = 0;
-  date.setHours(hours, parseInt(minutes), 0, 0);
-  return date;
+// Helper to parse "YYYY-MM-DD HH:MM AM/PM" into a MySQL-compatible "YYYY-MM-DD HH:MI:SS" string
+function parseTime(dateTimeStr) {
+  if (!dateTimeStr) return null;
+
+  const parts = dateTimeStr.match(/(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}) (AM|PM)/);
+  if (!parts) {
+    console.error("Invalid dateTimeStr format:", dateTimeStr);
+    return null;
+  }
+
+  let [, year, month, day, hour, minute, meridiem] = parts;
+  let hourInt = parseInt(hour, 10);
+
+  if (meridiem === 'PM' && hourInt < 12) {
+    hourInt += 12;
+  }
+  if (meridiem === 'AM' && hourInt === 12) { // Midnight case
+    hourInt = 0;
+  }
+
+  // Format to YYYY-MM-DD HH:MI:SS
+  const formattedHour = hourInt.toString().padStart(2, '0');
+  const sqlDateTime = `${year}-${month}-${day} ${formattedHour}:${minute}:00`;
+
+  return sqlDateTime;
 }
 
 router.get("/", async (req, res) => {
-  // We select 'reason' as 'procedure' so the frontend receives the field it expects
-  const [rows] = await db.query(
-    `SELECT a.*, a.reason AS \`procedure\`, p.full_name 
-     FROM appointments a
-     JOIN patients p ON a.patient_id = p.id
-     ORDER BY appointment_datetime ASC`
-  );
+  const { patient_id } = req.query;
+
+  let query = `
+    SELECT a.*, a.reason AS \`procedure\`, p.full_name 
+    FROM appointments a
+    JOIN patients p ON a.patient_id = p.id
+  `;
+  const params = [];
+
+  if (patient_id) {
+    query += " WHERE a.patient_id = ?";
+    params.push(patient_id);
+  }
+
+  query += " ORDER BY appointment_datetime ASC";
+
+  const [rows] = await db.query(query, params);
   res.json(rows);
 });
 
@@ -100,6 +124,32 @@ router.put("/:id", async (req, res) => {
 router.delete("/:id", async (req, res) => {
   await db.query("DELETE FROM appointments WHERE id = ?", [req.params.id]);
   res.json({ message: "Appointment deleted" });
+});
+
+// ADDED: Get a single appointment by its ID, with patient and dentist names
+router.get("/:id", async (req, res) => {
+  const { id } = req.params;
+  try {
+    const [rows] = await db.query(
+      `SELECT 
+         a.*, 
+         a.reason AS \`procedure\`, 
+         p.full_name as patient_name, 
+         d.name as dentist_name 
+       FROM appointments a
+       LEFT JOIN patients p ON a.patient_id = p.id
+       LEFT JOIN dentists d ON a.dentist_id = d.id
+       WHERE a.id = ?`,
+      [id]
+    );
+    if (rows.length === 0) {
+      return res.status(404).json({ message: "Appointment not found" });
+    }
+    res.json(rows[0]);
+  } catch (error) {
+    console.error(`Error fetching appointment ${id}:`, error);
+    res.status(500).json({ message: "Server error" });
+  }
 });
 
 module.exports = router;
