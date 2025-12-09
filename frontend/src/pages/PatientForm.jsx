@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import "../styles/pages/PatientForm.css";
 import PatientHistorySidebar from "../components/PatientHistorySidebar";
@@ -6,14 +6,14 @@ import XrayViewer from "../components/XrayViewer";
 import MedicalAlertBanner from "../components/MedicalAlertBanner";
 import useApi from "../hooks/useApi";
 import useAppStore from "../store/useAppStore";
+import toast from "react-hot-toast";
 
 function PatientForm() {
   const navigate = useNavigate();
   const { id } = useParams();
   const location = useLocation();
   const api = useApi();
-  
-  // Access global store to find dentist info from Queue/Appointments
+
   const queue = useAppStore((state) => state.queue);
   const appointments = useAppStore((state) => state.appointments);
 
@@ -31,7 +31,6 @@ function PatientForm() {
       }
       return age;
     }
-    // Fallback if age comes from list state
     if (p.age !== undefined && p.age !== null) return p.age;
     return "N/A";
   };
@@ -45,12 +44,13 @@ function PatientForm() {
       contact_number: data.contact_number || data.contact,
       medicalAlerts: data.medicalAlerts || [],
       vitals: data.vitals || {},
+      xrays: data.xrays || [],
       displayAge: getDisplayAge(data)
     };
   };
 
   const [patient, setPatient] = useState(mapInitialData(location.state?.patientData) || null);
-  const [dentists, setDentists] = useState([]); 
+  const [dentists, setDentists] = useState([]);
   const [selectedDentistId, setSelectedDentistId] = useState(location.state?.dentistId || "");
 
   // Chart & List States
@@ -59,7 +59,7 @@ function PatientForm() {
   const [toothStatuses, setToothStatuses] = useState({});
   const [timelineEntries, setTimelineEntries] = useState([]);
   const [medications, setMedications] = useState([]);
-  
+
   // UI States
   const [selected, setSelected] = useState({ kind: null, index: null, boxKind: null, cellKey: null });
   const [isPanelOpen, setIsPanelOpen] = useState(false);
@@ -68,109 +68,13 @@ function PatientForm() {
   const [isContextMenuOpen, setIsContextMenuOpen] = useState(false);
   const [selectedXray, setSelectedXray] = useState(null);
   const [isXrayViewerOpen, setIsXrayViewerOpen] = useState(false);
-  
+  const [isSaving, setIsSaving] = useState(false);
+
   // Form States
   const [timelineForm, setTimelineForm] = useState({ start_time: "", end_time: "", provider: "", procedure_text: "", notes: "" });
   const [medicationForm, setMedicationForm] = useState({ medicine: "", dosage: "", frequency: "", notes: "" });
-  const [uploadedFiles, setUploadedFiles] = useState([]);
+  const [uploadedFiles, setUploadedFiles] = useState([]); // Array of { name, url (base64) }
   const [vitals, setVitals] = useState({ bp: "", pulse: "", temp: "" });
-
-  // const loadData = useCallback(async () => {
-  //   if (id) {
-  //     try {
-  //       // 1. Load Dentists
-  //       const dentistsData = await api.loadDentists();
-  //       setDentists(dentistsData);
-
-  //       // 2. Load Patient
-  //       const patientData = await api.getPatientById(id);
-        
-  //       let alerts = [];
-  //       if (patientData.medical_alerts) {
-  //           alerts = typeof patientData.medical_alerts === 'string' 
-  //               ? patientData.medical_alerts.split(',') 
-  //               : patientData.medical_alerts;
-  //       }
-
-  //       const fullPatientData = {
-  //           ...patientData,
-  //           medicalAlerts: alerts,
-  //           vitals: patientData.vitals || {} 
-  //       };
-  //       fullPatientData.displayAge = getDisplayAge(fullPatientData);
-
-  //       setPatient(fullPatientData);
-        
-  //       if (fullPatientData.vitals) {
-  //           setVitals(prev => ({ ...prev, ...fullPatientData.vitals }));
-  //       }
-
-  //       // --- SMART DENTIST DETECTION ---
-  //       // If we don't have a dentist from navigation state, try to find one:
-  //       // 1. From Vitals (Saved Preference)
-  //       // 2. From Active Queue (if checked in)
-  //       // 3. From Today's Appointments
-  //       setSelectedDentistId(prevId => {
-  //           if (prevId) return prevId;
-
-  //           // 1. Saved Preference
-  //           if (fullPatientData.vitals && fullPatientData.vitals.dentist_id) {
-  //               return fullPatientData.vitals.dentist_id;
-  //           }
-
-  //           // 2. Active Queue Item?
-  //           const queueItem = queue.find(q => String(q.patient_id) === String(id) && q.status !== 'Done');
-  //           if (queueItem && queueItem.dentist_id) {
-  //               return queueItem.dentist_id;
-  //           }
-
-  //           // 3. Today's Appointment?
-  //           const todayStr = new Date().toISOString().split('T')[0]; // simple YYYY-MM-DD check
-  //           const appt = appointments.find(a => 
-  //               String(a.patient_id) === String(id) && 
-  //               a.status !== 'Done' && a.status !== 'Cancelled'
-  //           );
-  //           if (appt && appt.dentist_id) {
-  //               return appt.dentist_id;
-  //           }
-
-  //           return "";
-  //       });
-
-  //       // 3. Load Tooth Conditions
-  //       const conditions = await api.getToothConditions(id);
-  //       const newBoxMarks = Array(64).fill("");
-  //       const newCircleShades = Array(52).fill(false);
-  //       const newToothStatuses = {};
-        
-  //       conditions.forEach(c => {
-  //         const [type, indexStr] = c.cell_key.split("-");
-  //         const index = parseInt(indexStr, 10);
-  //         if (!isNaN(index)) {
-  //            if (type === 'box') newBoxMarks[index] = c.condition_code || "";
-  //            if (type === 'circle') newCircleShades[index] = Boolean(c.is_shaded);
-  //            newToothStatuses[c.cell_key] = c.status;
-  //         }
-  //       });
-  //       setBoxMarks(newBoxMarks);
-  //       setCircleShades(newCircleShades);
-  //       setToothStatuses(newToothStatuses);
-
-  //       // 4. Load Timeline & Meds
-  //       const timeline = await api.getTreatmentTimeline(id);
-  //       setTimelineEntries(timeline);
-  //       const meds = await api.getMedications(id);
-  //       setMedications(meds);
-
-  //     } catch (err) {
-  //       console.error("Failed to load patient data", err);
-  //     }
-  //   }
-  // }, [id, api, queue, appointments]); // Depend on queue/appointments for auto-detection
-
-  // useEffect(() => {
-  //   loadData();
-  // }, [loadData]);
 
   useEffect(() => {
     const loadData = async () => {
@@ -193,36 +97,33 @@ function PatientForm() {
           ...patientData,
           medicalAlerts: alerts,
           vitals: patientData.vitals || {},
+          xrays: patientData.xrays || [] // Ensure xrays loaded
         };
 
         fullPatientData.displayAge = getDisplayAge(fullPatientData);
         setPatient(fullPatientData);
 
+        // Populate local state with DB xrays so we don't overwrite/lose them
+        if (fullPatientData.xrays && Array.isArray(fullPatientData.xrays)) {
+          setUploadedFiles(fullPatientData.xrays);
+        }
+
         if (fullPatientData.vitals) {
           setVitals(prev => ({ ...prev, ...fullPatientData.vitals }));
         }
 
-        // AUTO dentist assignment (queue + appointments stays)
+        // AUTO dentist assignment
         setSelectedDentistId(prevId => {
           if (prevId) return prevId;
-
           if (fullPatientData.vitals?.dentist_id) return fullPatientData.vitals.dentist_id;
-
-          const queueItem = queue.find(
-            q => String(q.patient_id) === String(id) && q.status !== "Done"
-          );
+          const queueItem = queue.find(q => String(q.patient_id) === String(id) && q.status !== "Done");
           if (queueItem?.dentist_id) return queueItem.dentist_id;
-
-          const appt = appointments.find(a =>
-            String(a.patient_id) === String(id) &&
-            a.status !== "Done" &&
-            a.status !== "Cancelled"
-          );
+          const appt = appointments.find(a => String(a.patient_id) === String(id) && a.status !== "Done");
           if (appt?.dentist_id) return appt.dentist_id;
-
           return "";
         });
 
+        // Load tooth/timeline/meds...
         const conditions = await api.getToothConditions(id);
         const newBoxMarks = Array(64).fill("");
         const newCircleShades = Array(52).fill(false);
@@ -256,14 +157,84 @@ function PatientForm() {
     loadData();
   }, [id]);
 
-
   const updateVitals = (field, value) => setVitals(prev => ({ ...prev, [field]: value }));
 
+  // Helper to convert file to Base64 so we can store in DB (JSON field)
+  const convertToBase64 = (file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = (error) => reject(error);
+    });
+  };
+
+  const handleUpload = async (event) => {
+    const files = Array.from(event.target.files || []);
+    const newFiles = [];
+
+    for (const file of files) {
+      try {
+        const base64 = await convertToBase64(file);
+        newFiles.push({
+          name: file.name,
+          url: base64, // Use base64 string
+        });
+      } catch (e) {
+        console.error("Error converting file:", file.name, e);
+        toast.error(`Failed to upload ${file.name}`);
+      }
+    }
+
+    setUploadedFiles((prev) => [...prev, ...newFiles]);
+  };
+
+  // --- SAVE FUNCTION ---
+  const handleSaveAll = async () => {
+    if (!patient) return;
+    setIsSaving(true);
+    try {
+      // Prepare payload with Vitals and Xrays
+      const payload = {
+        ...patient,
+        vitals: {
+          ...vitals,
+          dentist_id: selectedDentistId // Also save assigned dentist
+        },
+        xrays: uploadedFiles,
+        contact_number: patient.contact_number,
+        // map legacy fields if necessary
+        contact: patient.contact_number
+      };
+
+      console.log("Saving payload size approx:", JSON.stringify(payload).length);
+      await api.updatePatient(patient.id, payload);
+      toast.success("Patient details, vitals, and images saved!");
+    } catch (error) {
+      console.error("Error saving patient:", error);
+      // More specific error message for the user
+      if (error.message && error.message.includes("413")) {
+        toast.error("Error: Images are too large for the server. Please upload smaller images or ask admin to increase server limit.");
+      } else {
+        toast.error("Failed to save changes.");
+      }
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // --- DONE FUNCTION ---
+  const handleDone = async () => {
+    if (!patient) return;
+    await handleSaveAll();
+    navigate("/app/queue");
+  };
+
+  // Tooth Logic
   const setCellStatus = (cellKey) => {
     if (!cellKey) return;
     const newStatus = { ...toothStatuses, [cellKey]: activeStatus };
     setToothStatuses(newStatus);
-    
     const [type, indexStr] = cellKey.split("-");
     const index = parseInt(indexStr, 10);
     api.upsertToothCondition({
@@ -275,160 +246,69 @@ function PatientForm() {
     });
   };
 
+  // ... (Timeline/Medication Logic remains same) ...
   const updateTimelineForm = (field, value) => setTimelineForm((prev) => ({ ...prev, [field]: value }));
-
   const addTimelineEntry = async () => {
     if (!timelineForm.procedure_text) return;
-    
     let providerName = timelineForm.provider;
     if (!providerName && selectedDentistId) {
-        const d = dentists.find(dentist => dentist.id === Number(selectedDentistId));
-        if (d) providerName = d.name;
+      const d = dentists.find(dentist => dentist.id === Number(selectedDentistId));
+      if (d) providerName = d.name;
     }
-
-    const payload = { 
-        ...timelineForm, 
-        patient_id: id,
-        provider: providerName,
-        start_time: timelineForm.start_time || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    const payload = {
+      ...timelineForm,
+      patient_id: id,
+      provider: providerName,
+      start_time: timelineForm.start_time || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
-
     try {
-        const newEntry = await api.addTreatmentTimelineEntry(payload);
-        setTimelineEntries(prev => [...prev, newEntry]);
-        setTimelineForm({ start_time: "", end_time: "", provider: "", procedure_text: "", notes: "" });
-    } catch (error) {
-        console.error("Failed to add timeline entry", error);
-    }
+      const newEntry = await api.addTreatmentTimelineEntry(payload);
+      setTimelineEntries(prev => [...prev, newEntry]);
+      setTimelineForm({ start_time: "", end_time: "", provider: "", procedure_text: "", notes: "" });
+    } catch (error) { console.error("Failed to add timeline entry", error); }
   };
-
   const deleteTimelineEntry = async (entryId) => {
-    try {
-        await api.deleteTreatmentTimelineEntry(entryId);
-        setTimelineEntries(prev => prev.filter(entry => entry.id !== entryId));
-    } catch (error) {
-        console.error("Failed to delete timeline entry", error);
-    }
+    try { await api.deleteTreatmentTimelineEntry(entryId); setTimelineEntries(prev => prev.filter(entry => entry.id !== entryId)); } catch (error) { console.error("Failed to delete timeline entry", error); }
   };
-  
   const updateMedicationForm = (field, value) => setMedicationForm((prev) => ({ ...prev, [field]: value }));
-
   const addMedication = async () => {
     if (!medicationForm.medicine) return;
-    try {
-        const newMed = await api.addMedication({ patient_id: id, ...medicationForm });
-        setMedications(prev => [...prev, newMed]);
-        setMedicationForm({ medicine: "", dosage: "", frequency: "", notes: "" });
-    } catch (error) {
-        console.error("Failed to add medication", error);
-    }
+    try { const newMed = await api.addMedication({ patient_id: id, ...medicationForm }); setMedications(prev => [...prev, newMed]); setMedicationForm({ medicine: "", dosage: "", frequency: "", notes: "" }); } catch (error) { console.error("Failed to add medication", error); }
   };
-
   const deleteMedication = async (medId) => {
-    try {
-        await api.deleteMedication(medId);
-        setMedications(prev => prev.filter(m => m.id !== medId));
-    } catch (error) {
-        console.error("Failed to delete medication", error);
-    }
+    try { await api.deleteMedication(medId); setMedications(prev => prev.filter(m => m.id !== medId)); } catch (error) { console.error("Failed to delete medication", error); }
   };
 
-  const handleUpload = (event) => {
-    const files = Array.from(event.target.files || []);
-    const mapped = files.map((file) => ({
-      name: file.name,
-      url: URL.createObjectURL(file),
-    }));
-    setUploadedFiles((prev) => [...prev, ...mapped]);
-  };
-  
-  const treatmentOptions = [
-    { code: "FV", label: "Fluoride Varnish" },
-    { code: "FG", label: "Fluoride Gel" },
-    { code: "PFS", label: "Pit and Fissure Sealant" },
-    { code: "PF", label: "Permanent Filling" },
-    { code: "TF", label: "Temporary Filling" },
-    { code: "X", label: "Extraction" },
-    { code: "O", label: "Others" },
-    { code: "", label: "Clear (no mark)" },
-  ];
-
-  const conditionOptions = [
-    { code: "S", label: "Sealed" },
-    { code: "UN", label: "Unerupted" },
-    { code: "D", label: "Decayed" },
-    { code: "F", label: "Filled" },
-    { code: "M", label: "Missing" },
-    { code: "JC", label: "Jacket Crown" },
-    { code: "P", label: "Pontic" },
-    { code: "DX", label: "For Extraction" },
-    { code: "", label: "Clear (no mark)" },
-  ];
-
-  const upperConditionRows = [
-    ["55", "54", "53", "52", "51", "61", "62", "63", "64", "65"],
-    ["18", "17", "16", "15", "14", "13", "12", "11","21", "22", "23", "24", "25", "26", "27", "28"],
-  ];
-
-  const lowerConditionRows = [
-    ["48", "47", "46", "45", "44", "43", "42", "41","31", "32", "33", "34", "35", "36", "37", "38"],
-    ["85", "84", "83", "82", "81", "71", "72", "73", "74", "75"],
-  ];
-  
+  // ... (Tooth rendering logic remains same) ...
   const getBoxKind = (idx) => {
     const row = Math.floor(idx / 16);
     if (row === 0 || row === 3) return "treatment";
     return "condition";
   };
-
   const handleBoxClick = (idx) => {
     const boxKind = getBoxKind(idx);
     setSelected({ kind: "box", index: idx, boxKind, cellKey: `box-${idx}` });
     setIsPanelOpen(true);
   };
-
   const toggleCircleShade = (idx) => {
     const cellKey = `circle-${idx}`;
     const newCircleShades = circleShades.map((v, i) => (i === idx ? !v : v));
     setCircleShades(newCircleShades);
-    
     const [type, indexStr] = cellKey.split("-");
     const index = parseInt(indexStr, 10);
     api.upsertToothCondition({
-        patient_id: id,
-        cell_key: cellKey,
-        condition_code: null,
-        status: activeStatus,
-        is_shaded: !circleShades[index], 
+      patient_id: id,
+      cell_key: cellKey,
+      condition_code: null,
+      status: activeStatus,
+      is_shaded: !circleShades[index],
     });
   };
-
-  const closePanel = () => {
-    setIsPanelOpen(false);
-    setSelected({ kind: null, index: null, boxKind: null, cellKey: null });
-  };
-  
-  const handleContextMenu = (e, cellKey, boxKind) => {
-    e.preventDefault();
-    setContextMenu({ x: e.pageX, y: e.pageY, cellKey, boxKind });
-    setIsContextMenuOpen(true);
-  };
-
-  const closeContextMenu = () => {
-    setIsContextMenuOpen(false);
-    setContextMenu(null);
-  };
-
-  const openXrayViewer = (file) => {
-    setSelectedXray(file);
-    setIsXrayViewerOpen(true);
-  };
-
-  const closeXrayViewer = () => {
-    setSelectedXray(null);
-    setIsXrayViewerOpen(false);
-  };
-
+  const closePanel = () => { setIsPanelOpen(false); setSelected({ kind: null, index: null, boxKind: null, cellKey: null }); };
+  const handleContextMenu = (e, cellKey, boxKind) => { e.preventDefault(); setContextMenu({ x: e.pageX, y: e.pageY, cellKey, boxKind }); setIsContextMenuOpen(true); };
+  const closeContextMenu = () => { setIsContextMenuOpen(false); setContextMenu(null); };
+  const openXrayViewer = (file) => { setSelectedXray(file); setIsXrayViewerOpen(true); };
+  const closeXrayViewer = () => { setSelectedXray(null); setIsXrayViewerOpen(false); };
   const applyCode = (code) => {
     if (selected.kind === "box" && selected.index != null) {
       const newBoxMarks = boxMarks.map((v, i) => (i === selected.index ? code : v));
@@ -440,15 +320,10 @@ function PatientForm() {
         status: activeStatus,
         is_shaded: false,
       });
-      setCellStatus(selected.cellKey); 
+      setCellStatus(selected.cellKey);
     }
     closePanel();
   };
-
-  const handleDone = () => {
-    navigate("/app/queue");
-  };
-
   const renderBoxRow = (rowIndex) => {
     const start = rowIndex * 16;
     return (
@@ -460,24 +335,12 @@ function PatientForm() {
           const cellKey = `box-${idx}`;
           const statusClass = toothStatuses[cellKey] ? ` tc-status-${toothStatuses[cellKey]}` : "";
           return (
-            <button
-              key={idx}
-              className={`tc-box-cell${mark ? " tc-has-mark" : ""}${isSelected ? " tc-selected" : ""}${statusClass}`}
-              onClick={() => handleBoxClick(idx)}
-              onContextMenu={(e) => handleContextMenu(e, cellKey, getBoxKind(idx))}
-              onDoubleClick={() => {
-                setSelected({ kind: "box", index: idx, boxKind: getBoxKind(idx), cellKey });
-                applyCode("D");
-              }}
-            >
-              {mark}
-            </button>
+            <button key={idx} className={`tc-box-cell${mark ? " tc-has-mark" : ""}${isSelected ? " tc-selected" : ""}${statusClass}`} onClick={() => handleBoxClick(idx)} onContextMenu={(e) => handleContextMenu(e, cellKey, getBoxKind(idx))} onDoubleClick={() => { setSelected({ kind: "box", index: idx, boxKind: getBoxKind(idx), cellKey }); applyCode("D"); }}>{mark}</button>
           );
         })}
       </div>
     );
   };
-
   const renderCircleGroup = (rows, startIndex) => {
     let runningIndex = startIndex;
     return rows.map((rowNumbers, rowIdx) => (
@@ -489,24 +352,17 @@ function PatientForm() {
           const cellKey = `circle-${idx}`;
           const statusClass = toothStatuses[cellKey] ? ` tc-status-${toothStatuses[cellKey]}` : "";
           return (
-            <button
-              key={num}
-              className={`tc-circle-unit${shaded ? " tc-has-mark" : ""}${statusClass}`}
-              onClick={() => toggleCircleShade(idx)}
-              onContextMenu={(e) => handleContextMenu(e, cellKey, "condition")}
-              onDoubleClick={() => {
-                toggleCircleShade(idx);
-              }}
-            >
-              <div className="tc-circle"></div>
-              <span className="tc-number">{num}</span>
-            </button>
+            <button key={num} className={`tc-circle-unit${shaded ? " tc-has-mark" : ""}${statusClass}`} onClick={() => toggleCircleShade(idx)} onContextMenu={(e) => handleContextMenu(e, cellKey, "condition")} onDoubleClick={() => { toggleCircleShade(idx); }}><div className="tc-circle"></div><span className="tc-number">{num}</span></button>
           );
         })}
       </div>
     ));
   };
-  
+
+  const treatmentOptions = [{ code: "FV", label: "Fluoride Varnish" }, { code: "FG", label: "Fluoride Gel" }, { code: "PFS", label: "Pit and Fissure Sealant" }, { code: "PF", label: "Permanent Filling" }, { code: "TF", label: "Temporary Filling" }, { code: "X", label: "Extraction" }, { code: "O", label: "Others" }, { code: "", label: "Clear (no mark)" }];
+  const conditionOptions = [{ code: "S", label: "Sealed" }, { code: "UN", label: "Unerupted" }, { code: "D", label: "Decayed" }, { code: "F", label: "Filled" }, { code: "M", label: "Missing" }, { code: "JC", label: "Jacket Crown" }, { code: "P", label: "Pontic" }, { code: "DX", label: "For Extraction" }, { code: "", label: "Clear (no mark)" }];
+  const upperConditionRows = [["55", "54", "53", "52", "51", "61", "62", "63", "64", "65"], ["18", "17", "16", "15", "14", "13", "12", "11", "21", "22", "23", "24", "25", "26", "27", "28"]];
+  const lowerConditionRows = [["48", "47", "46", "45", "44", "43", "42", "41", "31", "32", "33", "34", "35", "36", "37", "38"], ["85", "84", "83", "82", "81", "71", "72", "73", "74", "75"]];
   const panelTitle = selected.boxKind === "treatment" ? "Treatment" : selected.boxKind === "condition" ? "Condition" : "Legend";
   const panelOptions = selected.boxKind === "treatment" ? treatmentOptions : selected.boxKind === "condition" ? conditionOptions : [];
 
@@ -516,8 +372,18 @@ function PatientForm() {
     <div className="patient-form-layout">
       <div className="content-card patient-form-card">
         <MedicalAlertBanner alerts={patient.medicalAlerts || []} />
-        <div className="form-header">
+
+        {/* HEADER */}
+        <div className="form-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h2 className="patients-header">Patient Chart: {patient.full_name}</h2>
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <button className="done-btn secondary" onClick={handleSaveAll} disabled={isSaving}>
+              {isSaving ? "Saving..." : "Save Changes"}
+            </button>
+            <button className="done-btn" onClick={handleDone} disabled={isSaving}>
+              {isSaving ? "Saving..." : "Done"}
+            </button>
+          </div>
         </div>
 
         <div className="sections-container">
@@ -535,15 +401,9 @@ function PatientForm() {
             <div className="dentist-row">
               <div>
                 <h3 className="section-title">Dentist</h3>
-                <select 
-                    className="dentist-select" 
-                    value={selectedDentistId} 
-                    onChange={(e) => setSelectedDentistId(e.target.value)}
-                >
+                <select className="dentist-select" value={selectedDentistId} onChange={(e) => setSelectedDentistId(e.target.value)}>
                   <option value="">Select a Dentist</option>
-                  {dentists.map(d => (
-                    <option key={d.id} value={d.id}>{d.name}</option>
-                  ))}
+                  {dentists.map(d => (<option key={d.id} value={d.id}>{d.name}</option>))}
                 </select>
               </div>
               <div className="vital-signs">
@@ -613,11 +473,11 @@ function PatientForm() {
           <h3 className="section-title">X-rays & Images</h3>
           <input type="file" multiple accept="image/*" onChange={handleUpload} />
           <div className="thumbnail-grid">
-            {uploadedFiles.length === 0 ? <div className="muted-text">No files uploaded yet.</div> : uploadedFiles.map((file) => (<div key={file.url} className="thumbnail-item"><button onClick={() => openXrayViewer(file)}><img src={file.url} alt={file.name} /></button></div>))}
+            {uploadedFiles.length === 0 ? <div className="muted-text">No files uploaded yet.</div> : uploadedFiles.map((file, index) => (
+              <div key={index} className="thumbnail-item"><button onClick={() => openXrayViewer(file)}><img src={file.url} alt={file.name} /></button></div>
+            ))}
           </div>
         </section>
-
-        <div className="done-row"><button className="done-btn" onClick={handleDone}>Done</button></div>
 
         <div className={`side-panel-backdrop${isPanelOpen ? " side-panel-open" : ""}`} onClick={closePanel}>
           <div className="side-panel" onClick={(e) => e.stopPropagation()}>
@@ -627,13 +487,11 @@ function PatientForm() {
         </div>
       </div>
       <PatientHistorySidebar patient={patient} />
-
       {isContextMenuOpen && contextMenu && (
         <div className="context-menu" style={{ top: contextMenu.y, left: contextMenu.x }} onClick={closeContextMenu}>
           <div className="options-grid">{(contextMenu.boxKind === "treatment" ? treatmentOptions : conditionOptions).map((option) => (<button key={option.code} className="option-pill" onClick={() => applyCode(option.code)}><strong>{option.code || "Clear"}</strong><span>{option.label}</span></button>))}</div>
         </div>
       )}
-
       {isXrayViewerOpen && <XrayViewer file={selectedXray} onClose={closeXrayViewer} />}
     </div>
   );

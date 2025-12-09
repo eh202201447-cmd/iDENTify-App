@@ -1,8 +1,7 @@
 import React, { useState } from "react";
 import toast from "react-hot-toast";
-import "../styles/components/EditAppointmentModal.css"; // reuse modal styles
+import "../styles/components/EditAppointmentModal.css";
 
-// Helper to convert 24h "HH:MM" string to "HH:MM AM/PM" for the backend
 function formatTime12Hour(time24) {
   if (!time24) return "";
   const [hours, minutes] = time24.split(":");
@@ -10,11 +9,10 @@ function formatTime12Hour(time24) {
   const m = parseInt(minutes, 10);
   const ampm = h >= 12 ? "PM" : "AM";
   h = h % 12;
-  h = h ? h : 12; // the hour '0' should be '12'
+  h = h ? h : 12;
   return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")} ${ampm}`;
 }
 
-// Helper for validation comparison
 function toMinutes24(timeString) {
   if (!timeString) return 0;
   const [hours, minutes] = timeString.split(":").map(Number);
@@ -24,10 +22,13 @@ function toMinutes24(timeString) {
 function AddAppointmentModal({ isOpen, onClose, dentists = [], onSave }) {
   const [form, setForm] = useState({
     patient_name: "",
+    contact_number: "",
+    age: "",
+    sex: "",
     dentist_id: "",
-    appointmentDate: new Date().toISOString().split('T')[0], // YYYY-MM-DD
-    timeStart: "", // Stores "HH:MM" (24h) for the input
-    timeEnd: "",   // Stores "HH:MM" (24h) for the input
+    appointmentDate: new Date().toISOString().split('T')[0],
+    timeStart: "",
+    timeEnd: "",
     procedure: "",
     notes: "",
     status: "Scheduled",
@@ -52,15 +53,14 @@ function AddAppointmentModal({ isOpen, onClose, dentists = [], onSave }) {
       return;
     }
     if (!form.appointmentDate) {
-        toast.error("Please select a date.");
-        return;
+      toast.error("Please select a date.");
+      return;
     }
     if (!form.timeStart || !form.timeEnd) {
       toast.error("Please select both start and end times.");
       return;
     }
-    
-    // Compare times using the raw 24h values from state
+
     if (toMinutes24(form.timeEnd) <= toMinutes24(form.timeStart)) {
       toast.error("End time must be after start time.");
       return;
@@ -68,7 +68,6 @@ function AddAppointmentModal({ isOpen, onClose, dentists = [], onSave }) {
 
     setIsSaving(true);
     try {
-      // Construct the full datetime string and format for backend
       const fullTimeStart = `${form.appointmentDate} ${formatTime12Hour(form.timeStart)}`;
       const fullTimeEnd = `${form.appointmentDate} ${formatTime12Hour(form.timeEnd)}`;
 
@@ -78,7 +77,6 @@ function AddAppointmentModal({ isOpen, onClose, dentists = [], onSave }) {
         timeStart: fullTimeStart,
         timeEnd: fullTimeEnd,
       });
-      // Close handled by parent or success actions
     } catch (error) {
       console.error(error);
       toast.error("Failed to save appointment.");
@@ -92,6 +90,7 @@ function AddAppointmentModal({ isOpen, onClose, dentists = [], onSave }) {
       <div className="modal-content">
         <h2>Add Appointment</h2>
         <form className="form-grid" onSubmit={handleSubmit}>
+
           <div className="form-group full-width">
             <label htmlFor="patient_name">Patient Name</label>
             <input
@@ -103,6 +102,46 @@ function AddAppointmentModal({ isOpen, onClose, dentists = [], onSave }) {
               placeholder="Enter patient name"
             />
           </div>
+
+          <div className="form-group">
+            <label htmlFor="age">Age</label>
+            <input
+              id="age"
+              name="age"
+              type="number"
+              value={form.age}
+              onChange={handleChange}
+              placeholder="e.g. 25"
+            />
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="sex">Sex</label>
+            <select
+              id="sex"
+              name="sex"
+              value={form.sex}
+              onChange={handleChange}
+            >
+              <option value="">Select Sex</option>
+              <option value="Male">Male</option>
+              <option value="Female">Female</option>
+            </select>
+          </div>
+
+          <div className="form-group full-width">
+            <label htmlFor="contact_number">Contact Number</label>
+            <input
+              id="contact_number"
+              name="contact_number"
+              type="text"
+              value={form.contact_number}
+              onChange={handleChange}
+              placeholder="e.g. 0917..."
+            />
+          </div>
+
+          {/* DENTIST SELECTION CATERING AVAILABILITY */}
           <div className="form-group full-width">
             <label htmlFor="dentist_id">Dentist</label>
             <select
@@ -112,13 +151,17 @@ function AddAppointmentModal({ isOpen, onClose, dentists = [], onSave }) {
               onChange={handleChange}
             >
               <option value="">Select dentist</option>
-              {dentists.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.name}
-                </option>
-              ))}
+              {dentists.map((d) => {
+                const isUnavailable = d.status === "Off" || d.status === "Busy";
+                return (
+                  <option key={d.id} value={d.id} disabled={d.status === "Off"}>
+                    {d.name} {isUnavailable ? `(${d.status})` : ""}
+                  </option>
+                );
+              })}
             </select>
           </div>
+
           <div className="form-group">
             <label htmlFor="appointmentDate">Date</label>
             <input
@@ -130,7 +173,7 @@ function AddAppointmentModal({ isOpen, onClose, dentists = [], onSave }) {
             />
           </div>
           <div className="form-group">
-            {/* Empty group for layout */}
+            {/* Spacer */}
           </div>
           <div className="form-group">
             <label htmlFor="timeStart">Time Start</label>
@@ -164,11 +207,11 @@ function AddAppointmentModal({ isOpen, onClose, dentists = [], onSave }) {
           </div>
           <div className="form-group full-width">
             <label htmlFor="notes">Notes</label>
-            <textarea 
-              id="notes" 
-              name="notes" 
-              value={form.notes} 
-              onChange={handleChange} 
+            <textarea
+              id="notes"
+              name="notes"
+              value={form.notes}
+              onChange={handleChange}
               rows={3}
             />
           </div>

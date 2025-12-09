@@ -15,22 +15,23 @@ function toMinutes(timeString) {
   return hour * 60 + minute;
 }
 
-function EditAppointmentModal({ appointment, onSave, onCancel, dentists = [] }) {
+function EditAppointmentModal({ appointment, initialContact, onSave, onCancel, dentists = [] }) {
   if (!appointment) return null;
 
+  // 1. UPDATED STATE: Added patient_name here so it doesn't get lost
   const [formData, setFormData] = useState({
+    patient_name: appointment.patient_name || appointment.name || "", // Tries both keys just in case
     timeStart: appointment.timeStart || "",
     timeEnd: appointment.timeEnd || "",
     dentist_id:
       appointment.dentist_id || dentists.find((d) => d.name === appointment.dentist)?.id || "",
     dentist:
       appointment.dentist || dentists.find((d) => d.id === appointment.dentist_id)?.name || "",
-    // Robust fallback: use procedure OR reason OR empty string
     procedure: appointment.procedure || appointment.reason || "",
     notes: appointment.notes || "",
-    addReminder: false,
-    isPriority: false,
+    contact_number: initialContact || "",
   });
+
   const [isLoading, setIsLoading] = useState(false);
 
   const handleChange = (e) => {
@@ -42,11 +43,17 @@ function EditAppointmentModal({ appointment, onSave, onCancel, dentists = [] }) 
   };
 
   const handleSave = () => {
+    // Basic validation for name
+    if (!formData.patient_name.trim()) {
+      toast.error("Patient name cannot be empty.");
+      return;
+    }
+
     if (formData.timeStart && formData.timeEnd) {
-        if (toMinutes(formData.timeEnd) <= toMinutes(formData.timeStart)) {
+      if (toMinutes(formData.timeEnd) <= toMinutes(formData.timeStart)) {
         toast.error("End time cannot be before or equal to start time.");
         return;
-        }
+      }
     }
 
     const proc = formData.procedure || "";
@@ -54,15 +61,16 @@ function EditAppointmentModal({ appointment, onSave, onCancel, dentists = [] }) 
       toast.error("Procedure cannot be empty.");
       return;
     }
-    
+
     setIsLoading(true);
     setTimeout(() => {
       const dentistNameFromId = dentists.find((d) => d.id === Number(formData.dentist_id))?.name;
-      onSave({ 
-        ...appointment, 
-        ...formData, 
+
+      onSave({
+        ...appointment,
+        ...formData, // Now includes patient_name, so it won't be empty
         dentist_id: Number(formData.dentist_id),
-        dentist: dentistNameFromId || formData.dentist 
+        dentist: dentistNameFromId || formData.dentist
       });
       setIsLoading(false);
     }, 500);
@@ -73,6 +81,20 @@ function EditAppointmentModal({ appointment, onSave, onCancel, dentists = [] }) 
       <div className="modal-content">
         <h2>Edit Appointment</h2>
         <div className="form-grid">
+
+          {/* 2. ADDED FIELD: Patient Name Input */}
+          <div className="form-group full-width">
+            <label htmlFor="patient_name">Patient Name</label>
+            <input
+              type="text"
+              id="patient_name"
+              name="patient_name"
+              value={formData.patient_name}
+              onChange={handleChange}
+              placeholder="Enter patient name"
+            />
+          </div>
+
           <div className="form-group">
             <label htmlFor="timeStart">Time Start</label>
             <input
@@ -95,6 +117,19 @@ function EditAppointmentModal({ appointment, onSave, onCancel, dentists = [] }) 
               placeholder="e.g. 09:30 AM"
             />
           </div>
+
+          <div className="form-group full-width">
+            <label htmlFor="contact_number">Contact Number</label>
+            <input
+              type="text"
+              id="contact_number"
+              name="contact_number"
+              value={formData.contact_number}
+              onChange={handleChange}
+              placeholder="e.g. 0917..."
+            />
+          </div>
+
           <div className="form-group full-width">
             <label htmlFor="dentist">Dentist</label>
             <select
@@ -139,26 +174,6 @@ function EditAppointmentModal({ appointment, onSave, onCancel, dentists = [] }) 
               rows="3"
             ></textarea>
           </div>
-          {/* <div className="form-group checkbox-group">
-            <input
-              type="checkbox"
-              id="addReminder"
-              name="addReminder"
-              checked={formData.addReminder}
-              onChange={handleChange}
-            />
-            <label htmlFor="addReminder">Add reminder</label>
-          </div>
-          <div className="form-group checkbox-group">
-            <input
-              type="checkbox"
-              id="isPriority"
-              name="isPriority"
-              checked={formData.isPriority}
-              onChange={handleChange}
-            />
-            <label htmlFor="isPriority">Mark priority</label>
-          </div> */}
         </div>
         <div className="modal-actions">
           <button type="button" onClick={onCancel}>

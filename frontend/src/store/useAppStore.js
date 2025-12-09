@@ -65,7 +65,14 @@ const useAppStore = create((set, get) => ({
         ),
       };
     }),
-  // set* helpers for syncing remote data (useApi hook prefers these)
+
+  // ADDED: Update dentist status/schedule in store
+  updateDentist: (updatedDentist) =>
+    set((state) => ({
+      dentists: state.dentists.map((d) => (d.id === updatedDentist.id ? updatedDentist : d)),
+    })),
+
+  // set* helpers for syncing remote data
   setPatients: (patients) => set({ patients }),
   setAppointments: (appointments) => set({ appointments }),
   setQueue: (queue) => set({ queue }),

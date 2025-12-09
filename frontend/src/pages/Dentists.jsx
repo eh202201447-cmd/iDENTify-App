@@ -1,143 +1,176 @@
-// src/pages/Dentists.jsx
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import "../styles/pages/Dentists.css";
-
-import { dentists } from "../data/dentists";
-
-const getInitialStatusMap = () => {
-  const stored = localStorage.getItem("dentistStatus");
-  return stored ? JSON.parse(stored) : {};
-};
+import useAppStore from "../store/useAppStore";
+import useApi from "../hooks/useApi";
+import toast from "react-hot-toast";
 
 function Dentists() {
+  const api = useApi();
+  const dentists = useAppStore((state) => state.dentists);
+  const appointments = useAppStore((state) => state.appointments);
+
   const [selectedDate, setSelectedDate] = useState(new Date());
-  const [dentistData, setDentistData] = useState(dentists);
-  const [statusMap, setStatusMap] = useState(getInitialStatusMap);
   const [filters, setFilters] = useState({
     specialization: "All",
     availability: "All",
     assigned: "All",
   });
+
+  // Local state for inputs before saving
   const [breakDrafts, setBreakDrafts] = useState({});
   const [leaveDrafts, setLeaveDrafts] = useState({});
 
   const dayIndex = selectedDate.getDay();
   const selectedDateStr = selectedDate.toISOString().split("T")[0];
 
-  const syncStatusFromStorage = useCallback(() => {
-    const stored = JSON.parse(localStorage.getItem("dentistStatus") || "{}");
-    setStatusMap(stored);
+  useEffect(() => {
+    api.loadDentists();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
-    window.addEventListener("storage", syncStatusFromStorage);
-    return () => {
-      window.removeEventListener("storage", syncStatusFromStorage);
+  // Helper to save changes to DB
+  const saveDentistChanges = async (dentist) => {
+    try {
+      await api.updateDentist(dentist.id, dentist);
+      toast.success("Schedule updated");
+    } catch (error) {
+      console.error("Failed to update dentist", error);
+      toast.error("Failed to save changes");
+    }
+  };
+
+  const updateOperatingHours = (dentist, field, value) => {
+    const updated = {
+      ...dentist,
+      operatingHours: { ...dentist.operatingHours, [field]: value }
     };
-  }, [syncStatusFromStorage]);
-
-  const updateOperatingHours = (shortName, field, value) => {
-    setDentistData((prev) =>
-      prev.map((d) =>
-        d.shortName === shortName
-          ? { ...d, operatingHours: { ...d.operatingHours, [field]: value } }
-          : d
-      )
-    );
+    saveDentistChanges(updated);
   };
 
-  const updateLunch = (shortName, field, value) => {
-    setDentistData((prev) =>
-      prev.map((d) =>
-        d.shortName === shortName
-          ? { ...d, lunch: { ...d.lunch, [field]: value } }
-          : d
-      )
-    );
+  const updateLunch = (dentist, field, value) => {
+    const updated = {
+      ...dentist,
+      lunch: { ...dentist.lunch, [field]: value }
+    };
+    saveDentistChanges(updated);
   };
 
-  const handleBreakDraftChange = (shortName, field, value) => {
+  const handleBreakDraftChange = (dentistId, field, value) => {
     setBreakDrafts((prev) => ({
       ...prev,
-      [shortName]: { ...prev[shortName], [field]: value },
+      [dentistId]: { ...prev[dentistId], [field]: value },
     }));
   };
 
-  const addBreakSlot = (shortName) => {
-    const draft = breakDrafts[shortName];
+  const addBreakSlot = (dentist) => {
+    const draft = breakDrafts[dentist.id];
     if (!draft?.start || !draft?.end) return;
-    setDentistData((prev) =>
-      prev.map((d) =>
-        d.shortName === shortName
-          ? {
-              ...d,
-              breaks: [
-                ...d.breaks,
-                { label: "Added break", start: draft.start, end: draft.end },
-              ],
-            }
-          : d
-      )
-    );
-    setBreakDrafts((prev) => ({ ...prev, [shortName]: { start: "", end: "" } }));
+
+    const updated = {
+      ...dentist,
+      breaks: [...(dentist.breaks || []), { label: "Break", start: draft.start, end: draft.end }]
+    };
+
+    saveDentistChanges(updated);
+    setBreakDrafts((prev) => ({ ...prev, [dentist.id]: { start: "", end: "" } }));
   };
 
-  const handleLeaveDraftChange = (shortName, value) => {
-    setLeaveDrafts((prev) => ({ ...prev, [shortName]: value }));
+  const removeBreakSlot = (dentist, index) => {
+    const newBreaks = [...(dentist.breaks || [])];
+    newBreaks.splice(index, 1);
+    const updated = { ...dentist, breaks: newBreaks };
+    saveDentistChanges(updated);
   };
 
-  const addLeaveDay = (shortName) => {
-    const draft = leaveDrafts[shortName];
+  const handleLeaveDraftChange = (dentistId, value) => {
+    setLeaveDrafts((prev) => ({ ...prev, [dentistId]: value }));
+  };
+
+  const addLeaveDay = (dentist) => {
+    const draft = leaveDrafts[dentist.id];
     if (!draft) return;
-    setDentistData((prev) =>
-      prev.map((d) =>
-        d.shortName === shortName && !d.leaveDays.includes(draft)
-          ? { ...d, leaveDays: [...d.leaveDays, draft] }
-          : d
-      )
-    );
-    setLeaveDrafts((prev) => ({ ...prev, [shortName]: "" }));
+
+    const currentLeaves = dentist.leaveDays || [];
+    if (currentLeaves.includes(draft)) return;
+
+    const updated = {
+      ...dentist,
+      leaveDays: [...currentLeaves, draft]
+    };
+
+    saveDentistChanges(updated);
+    setLeaveDrafts((prev) => ({ ...prev, [dentist.id]: "" }));
   };
 
-  const markAvailable = (shortName) => {
-    const stored = JSON.parse(localStorage.getItem("dentistStatus") || "{}");
-    stored[shortName] = { status: "Available" };
-    localStorage.setItem("dentistStatus", JSON.stringify(stored));
-    syncStatusFromStorage();
+  const removeLeaveDay = (dentist, dayToRemove) => {
+    const updated = {
+      ...dentist,
+      leaveDays: (dentist.leaveDays || []).filter(d => d !== dayToRemove)
+    };
+    saveDentistChanges(updated);
+  }
+
+  const toggleStatus = (dentist) => {
+    // Simple toggle logic: Available -> Off -> Busy -> Available
+    const modes = ["Available", "Off", "Busy"];
+    const currentIdx = modes.indexOf(dentist.status || "Available");
+    const nextStatus = modes[(currentIdx + 1) % modes.length];
+
+    const updated = { ...dentist, status: nextStatus };
+    saveDentistChanges(updated);
   };
 
-  const availabilityStatus = useCallback(
-    (dentist) => {
-      const isLeaveDay = dentist.leaveDays.includes(selectedDateStr);
-      const worksToday = dentist.days.includes(dayIndex);
-      const stored = statusMap[dentist.shortName];
+  const calculateAvailability = (dentist) => {
+    // 1. Check DB Status Override
+    if (dentist.status === "Busy") return "Busy";
+    if (dentist.status === "Off") return "Off";
 
-      if (stored?.status === "Busy") return "Busy";
-      if (!worksToday || isLeaveDay) return "Off";
-      return "Available";
-    },
-    [selectedDateStr, dayIndex]
-  );
+    // 2. Check Leave Days
+    if ((dentist.leaveDays || []).includes(selectedDateStr)) return "Off (Leave)";
+
+    // 3. Check Schedule Days (e.g. Mon-Fri)
+    if (dentist.days && !dentist.days.includes(dayIndex)) return "Off (Sched)";
+
+    return "Available";
+  };
+
+  const getAssignedCount = (dentistId) => {
+    // Count appointments for this dentist on the selected date
+    return appointments.filter(a => {
+      if (a.dentist_id !== dentistId) return false;
+      // Check date match
+      // Assuming a.timeStart or a.appointment_datetime contains the date
+      // Simplistic check string matching:
+      return (a.timeStart && a.timeStart.includes(selectedDateStr))
+        || (a.appointment_datetime && a.appointment_datetime.startsWith(selectedDateStr));
+    }).length;
+  };
 
   const filteredDentists = useMemo(
     () =>
-      dentistData.filter((d) => {
-        const status = availabilityStatus(d);
-        const assignedCount = d.assignedPatientsToday.length;
+      dentists.filter((d) => {
+        const computedStatus = calculateAvailability(d);
+        const assignedCount = getAssignedCount(d.id);
+
         const specializationMatch =
           filters.specialization === "All" ||
           filters.specialization === d.specialization;
+
+        // Looser match for status to account for "Off (Leave)" etc
         const availabilityMatch =
-          filters.availability === "All" || filters.availability === status;
+          filters.availability === "All" ||
+          computedStatus.includes(filters.availability);
+
         const assignedMatch =
           filters.assigned === "All" ||
           (filters.assigned === "With" && assignedCount > 0) ||
           (filters.assigned === "None" && assignedCount === 0);
+
         return specializationMatch && availabilityMatch && assignedMatch;
       }),
-    [dentistData, filters, availabilityStatus]
+    [dentists, filters, selectedDateStr, appointments]
   );
 
   return (
@@ -169,9 +202,10 @@ function Dentists() {
             }
           >
             <option value="All">All</option>
-            <option value="Orthodontics">Orthodontics</option>
-            <option value="Endodontics">Endodontics</option>
-            <option value="General Dentistry">General Dentistry</option>
+            {/* Unique specializations */}
+            {Array.from(new Set(dentists.map(d => d.specialization))).map(s => (
+              <option key={s} value={s}>{s}</option>
+            ))}
           </select>
         </div>
         <div className="filter-group">
@@ -185,65 +219,36 @@ function Dentists() {
             <option value="All">All</option>
             <option value="Available">Available</option>
             <option value="Busy">Busy</option>
-            <option value="Off">Off / on leave</option>
-          </select>
-        </div>
-        <div className="filter-group">
-          <label>Assigned patients today</label>
-          <select
-            value={filters.assigned}
-            onChange={(e) =>
-              setFilters((prev) => ({ ...prev, assigned: e.target.value }))
-            }
-          >
-            <option value="All">Show all</option>
-            <option value="With">Has assignments</option>
-            <option value="None">No assignments</option>
+            <option value="Off">Off</option>
           </select>
         </div>
       </div>
 
       <div className="dentist-grid">
         {filteredDentists.map((d) => {
-          const status = availabilityStatus(d);
-          const stored = statusMap[d.shortName];
+          const statusDisplay = calculateAvailability(d);
+          const assignedCount = getAssignedCount(d.id);
+          const isOff = statusDisplay.includes("Off");
+          const isBusy = statusDisplay === "Busy";
+
           return (
-            <div className="dentist-card" key={d.shortName}>
+            <div className="dentist-card" key={d.id}>
               <div className="dentist-card__header">
                 <div>
                   <div className="dentist-specialization">{d.specialization}</div>
                   <h3>{d.name}</h3>
                   <p className="muted-text">
-                    Assigned patients today: {d.assignedPatientsToday.length}
+                    Assigned patients today: {assignedCount}
                   </p>
                 </div>
-                <div className={`status-pill status-${status.toLowerCase()}`}>
-                  {status}
-                </div>
+                <button
+                  className={`status-pill status-${isOff ? 'off' : isBusy ? 'busy' : 'available'}`}
+                  onClick={() => toggleStatus(d)}
+                  title="Click to toggle status (Available -> Off -> Busy)"
+                >
+                  {statusDisplay}
+                </button>
               </div>
-
-              {stored?.patient && (
-                <div className="busy-banner">
-                  <div>
-                    <p className="small-label">Currently with patient</p>
-                    <strong>{stored.patient}</strong>
-                    {stored.startedAt && (
-                      <span className="muted-text">
-                        Started{" "}
-                        {new Date(stored.startedAt).toLocaleTimeString([], {
-                          timeStyle: "short",
-                        })}
-                      </span>
-                    )}
-                  </div>
-                  <button
-                    className="small-btn secondary"
-                    onClick={() => markAvailable(d.shortName)}
-                  >
-                    Mark available
-                  </button>
-                </div>
-              )}
 
               <div className="schedule-grid">
                 <div>
@@ -251,40 +256,28 @@ function Dentists() {
                   <div className="schedule-row">
                     <input
                       type="time"
-                      value={d.operatingHours.start}
-                      onChange={(e) =>
-                        updateOperatingHours(
-                          d.shortName,
-                          "start",
-                          e.target.value
-                        )
-                      }
+                      value={d.operatingHours?.start || ""}
+                      onChange={(e) => updateOperatingHours(d, "start", e.target.value)}
                     />
                     <span className="time-separator">to</span>
                     <input
                       type="time"
-                      value={d.operatingHours.end}
-                      onChange={(e) =>
-                        updateOperatingHours(d.shortName, "end", e.target.value)
-                      }
+                      value={d.operatingHours?.end || ""}
+                      onChange={(e) => updateOperatingHours(d, "end", e.target.value)}
                     />
                   </div>
                   <p className="small-label">Lunch</p>
                   <div className="schedule-row">
                     <input
                       type="time"
-                      value={d.lunch.start}
-                      onChange={(e) =>
-                        updateLunch(d.shortName, "start", e.target.value)
-                      }
+                      value={d.lunch?.start || ""}
+                      onChange={(e) => updateLunch(d, "start", e.target.value)}
                     />
                     <span className="time-separator">to</span>
                     <input
                       type="time"
-                      value={d.lunch.end}
-                      onChange={(e) =>
-                        updateLunch(d.shortName, "end", e.target.value)
-                      }
+                      value={d.lunch?.end || ""}
+                      onChange={(e) => updateLunch(d, "end", e.target.value)}
                     />
                   </div>
                 </div>
@@ -292,46 +285,38 @@ function Dentists() {
                 <div>
                   <p className="small-label">Breaks</p>
                   <div className="break-list">
-                    {d.breaks.map((b, idx) => (
+                    {(d.breaks || []).map((b, idx) => (
                       <div className="break-chip" key={`${b.start}-${idx}`}>
-                        <strong>{b.label}</strong>
-                        <span>
-                          {b.start} - {b.end}
-                        </span>
+                        <span>{b.start} - {b.end}</span>
+                        <button
+                          className="chip-remove-btn"
+                          onClick={() => removeBreakSlot(d, idx)}
+                          style={{ marginLeft: '6px', border: 'none', background: 'transparent', color: '#888', cursor: 'pointer' }}
+                        >
+                          ×
+                        </button>
                       </div>
                     ))}
                   </div>
                   <div className="schedule-row">
                     <input
                       type="time"
-                      placeholder="Start"
-                      value={breakDrafts[d.shortName]?.start || ""}
-                      onChange={(e) =>
-                        handleBreakDraftChange(
-                          d.shortName,
-                          "start",
-                          e.target.value
-                        )
-                      }
+                      style={{ width: '80px' }}
+                      value={breakDrafts[d.id]?.start || ""}
+                      onChange={(e) => handleBreakDraftChange(d.id, "start", e.target.value)}
                     />
                     <input
                       type="time"
-                      placeholder="End"
-                      value={breakDrafts[d.shortName]?.end || ""}
-                      onChange={(e) =>
-                        handleBreakDraftChange(
-                          d.shortName,
-                          "end",
-                          e.target.value
-                        )
-                      }
+                      style={{ width: '80px' }}
+                      value={breakDrafts[d.id]?.end || ""}
+                      onChange={(e) => handleBreakDraftChange(d.id, "end", e.target.value)}
                     />
                     <button
                       className="pill-btn"
                       type="button"
-                      onClick={() => addBreakSlot(d.shortName)}
+                      onClick={() => addBreakSlot(d)}
                     >
-                      Add break
+                      +
                     </button>
                   </div>
                 </div>
@@ -339,30 +324,32 @@ function Dentists() {
                 <div>
                   <p className="small-label">Leave days</p>
                   <div className="leave-list">
-                    {d.leaveDays.length ? (
-                      d.leaveDays.map((day) => (
+                    {(d.leaveDays || []).length ? (
+                      (d.leaveDays).map((day) => (
                         <span className="leave-chip" key={day}>
                           {day}
+                          <button
+                            onClick={() => removeLeaveDay(d, day)}
+                            style={{ marginLeft: '6px', border: 'none', background: 'transparent', color: '#888', cursor: 'pointer' }}
+                          >×</button>
                         </span>
                       ))
                     ) : (
-                      <span className="muted-text">None scheduled</span>
+                      <span className="muted-text">None</span>
                     )}
                   </div>
                   <div className="schedule-row">
                     <input
                       type="date"
-                      value={leaveDrafts[d.shortName] || ""}
-                      onChange={(e) =>
-                        handleLeaveDraftChange(d.shortName, e.target.value)
-                      }
+                      value={leaveDrafts[d.id] || ""}
+                      onChange={(e) => handleLeaveDraftChange(d.id, e.target.value)}
                     />
                     <button
                       className="pill-btn"
                       type="button"
-                      onClick={() => addLeaveDay(d.shortName)}
+                      onClick={() => addLeaveDay(d)}
                     >
-                      Add leave
+                      Add
                     </button>
                   </div>
                 </div>

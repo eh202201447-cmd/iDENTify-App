@@ -2,7 +2,7 @@ import React, { useMemo, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import "../styles/pages/Appointments.css";
-import EditAppointmentModal from "../components/EditAppointmentModal.clean";
+import EditAppointmentModal from "../components/EditAppointmentModal";
 import AddAppointmentModal from "../components/AddAppointmentModal";
 import StatusBadge from "../components/StatusBadge";
 import ConfirmationModal from "../components/ConfirmationModal";
@@ -34,13 +34,13 @@ function Appointments() {
       }
     };
     loadData();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   const appointments = useAppStore((state) => state.appointments);
   const patients = useAppStore((state) => state.patients);
   const dentists = useAppStore((state) => state.dentists);
   const queue = useAppStore((state) => state.queue);
-  
+
   const [search, setSearch] = useState("");
   const [activeContactId, setActiveContactId] = useState(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -71,7 +71,7 @@ function Appointments() {
 
     let patientId = appointment.patient_id;
     if (!patientId) {
-      const patient = patients.find((p) => p.full_name === appointment.patient);
+      const patient = patients.find((p) => p.name === appointment.patient);
       patientId = patient ? patient.id : null;
     }
 
@@ -106,9 +106,8 @@ function Appointments() {
       if (!appt.timeStart || !appt.timeEnd) return;
       const start = toMinutes(appt.timeStart);
       const end = toMinutes(appt.timeEnd);
-      // Resolve dentist name for conflict grouping
       const dentistName = dentists.find(d => d.id === appt.dentist_id)?.name || appt.dentist || "Unassigned";
-      
+
       const existing = dentistMap.get(dentistName) || [];
       existing.push({ ...appt, start, end, dentistName });
       dentistMap.set(dentistName, existing);
@@ -122,10 +121,9 @@ function Appointments() {
           const first = list[i];
           const second = list[j];
           if (second.start < first.end && second.end > first.start) {
-            // Resolve patient names for message
-            const p1 = patients.find(p => p.id === first.patient_id)?.full_name || first.patient;
-            const p2 = patients.find(p => p.id === second.patient_id)?.full_name || second.patient;
-            
+            const p1 = patients.find(p => p.id === first.patient_id)?.name || first.patient;
+            const p2 = patients.find(p => p.id === second.patient_id)?.name || second.patient;
+
             conflictMessages.push({
               id: `${first.id}-${second.id}`,
               message: `${first.dentistName}: ${p1} overlaps with ${p2}`,
@@ -140,12 +138,10 @@ function Appointments() {
 
   const filteredAppointments = useMemo(() => {
     return appointments.filter((appt) => {
-      // 1. Resolve Data References
       const dentistName = dentists.find((d) => d.id === appt.dentist_id)?.name || appt.dentist || "";
-      const patientName = patients.find((p) => p.id === appt.patient_id)?.full_name || appt.patient || "";
+      const patientName = patients.find((p) => p.id === appt.patient_id)?.name || appt.patient || "";
       const proc = appt.procedure || appt.reason || "";
 
-      // 2. Search Filter
       const searchMatch = [
         patientName,
         dentistName,
@@ -157,7 +153,6 @@ function Appointments() {
         .toLowerCase()
         .includes(search.toLowerCase());
 
-      // 3. Dropdown Filters
       const dentistMatch =
         filters.dentist === "all" || dentistName === filters.dentist;
       const statusMatch =
@@ -165,7 +160,6 @@ function Appointments() {
       const procedureMatch =
         filters.procedure === "all" || proc === filters.procedure;
 
-      // 4. Time Filter
       let timeMatch = true;
       const startMinutes = toMinutes(appt.timeStart);
       if (filters.time === "morning") timeMatch = startMinutes < 12 * 60;
@@ -215,7 +209,42 @@ function Appointments() {
   const handleSaveAppointment = async (updatedAppointment) => {
     if (!updatedAppointment) return;
     try {
+      // 1. CRITICAL: Update Patient Record if name/age/contact/sex changed
+      // This ensures the name sticks and doesn't "disappear" or revert
+      const patient = patients.find(p => p.id === updatedAppointment.patient_id);
+      if (patient) {
+        const updates = {};
+
+        // Name Change
+        if (updatedAppointment.patient_name && updatedAppointment.patient_name !== patient.name) {
+          updates.full_name = updatedAppointment.patient_name;
+        }
+
+        // Contact Change
+        if (updatedAppointment.contact_number && updatedAppointment.contact_number !== patient.contact) {
+          updates.contact_number = updatedAppointment.contact_number;
+        }
+
+        // Age Change (store in vitals or age field if available)
+        if (updatedAppointment.age && updatedAppointment.age !== patient.age) {
+          updates.age = updatedAppointment.age;
+          // Also update vitals object for consistency
+          updates.vitals = { ...(patient.vitals || {}), age: updatedAppointment.age };
+        }
+
+        // Sex Change
+        if (updatedAppointment.sex && updatedAppointment.sex !== patient.sex) {
+          updates.gender = updatedAppointment.sex;
+        }
+
+        if (Object.keys(updates).length > 0) {
+          await api.updatePatient(patient.id, updates);
+        }
+      }
+
+      // 2. Update Appointment Record
       await api.updateAppointment(updatedAppointment.id, updatedAppointment);
+
       toast.success("Appointment updated");
       handleCloseModal();
     } catch (err) {
@@ -239,12 +268,32 @@ function Appointments() {
   const handleAddAppointment = async (appointmentData) => {
     try {
       let patientId;
-      const existingPatient = patients.find(p => p.full_name?.toLowerCase() === appointmentData.patient_name?.toLowerCase());
+      // Check existing patient by Name
+      const existingPatient = patients.find(p => p.name?.toLowerCase() === appointmentData.patient_name?.toLowerCase());
 
       if (existingPatient) {
         patientId = existingPatient.id;
+        // Optionally backfill missing info on existing patient
+        const updates = {};
+        if (appointmentData.contact_number && !existingPatient.contact) updates.contact_number = appointmentData.contact_number;
+        if (appointmentData.sex && !existingPatient.sex) updates.gender = appointmentData.sex;
+        if (appointmentData.age && !existingPatient.age) {
+          updates.age = appointmentData.age;
+          updates.vitals = { ...(existingPatient.vitals || {}), age: appointmentData.age };
+        }
+
+        if (Object.keys(updates).length > 0) {
+          await api.updatePatient(patientId, updates);
+        }
       } else {
-        const newPatient = await api.createPatient({ full_name: appointmentData.patient_name });
+        // Create NEW patient with ALL fields (Age, Sex, Contact)
+        const newPatient = await api.createPatient({
+          full_name: appointmentData.patient_name,
+          contact_number: appointmentData.contact_number,
+          gender: appointmentData.sex,
+          age: appointmentData.age,
+          vitals: { age: appointmentData.age }
+        });
         patientId = newPatient.id;
       }
 
@@ -252,7 +301,12 @@ function Appointments() {
         ...appointmentData,
         patient_id: patientId,
       };
-      delete appointmentToCreate.patient_name; 
+
+      // Remove fields not belonging to appointment table
+      delete appointmentToCreate.patient_name;
+      delete appointmentToCreate.contact_number;
+      delete appointmentToCreate.age;
+      delete appointmentToCreate.sex;
 
       await api.createAppointment(appointmentToCreate);
       toast.success("Appointment added");
@@ -265,6 +319,18 @@ function Appointments() {
 
   const handleReschedule = () => {
     toast("Please edit the appointment time to resolve the conflict.");
+  };
+
+  // Helper functions to populate modal with existing patient data
+  const getSelectedPatientData = (field) => {
+    if (!selectedAppointment) return "";
+    const p = patients.find((p) => p.id === selectedAppointment.patient_id);
+    if (!p) return "";
+
+    if (field === 'contact') return p.contact || "";
+    if (field === 'age') return p.age || p.vitals?.age || "";
+    if (field === 'sex') return p.sex || p.gender || "";
+    return "";
   };
 
   return (
@@ -397,7 +463,7 @@ function Appointments() {
                   <div>{a.timeStart}</div>
                   <span className="time-end">{a.timeEnd}</span>
                 </td>
-                <td>{patients.find((p) => p.id === a.patient_id)?.full_name || a.patient}</td>
+                <td>{patients.find((p) => p.id === a.patient_id)?.name || a.patient}</td>
                 <td>{dentists.find((d) => d.id === a.dentist_id)?.name || a.dentist}</td>
                 <td>
                   <span className="badge badge-neutral">{a.procedure || a.reason}</span>
@@ -424,13 +490,13 @@ function Appointments() {
                   {activeContactId === a.id && (
                     <div className="contact-popover">
                       <p>
-                        <strong>Phone:</strong> {patients.find((p) => p.id === a.patient_id)?.contact_number || patients.find((p) => p.id === a.patient_id)?.contact || a.contact?.phone || ''}
+                        <strong>Phone:</strong> {patients.find((p) => p.id === a.patient_id)?.contact || a.contact?.phone || ''}
                       </p>
                       <p>
                         <strong>Email:</strong> {patients.find((p) => p.id === a.patient_id)?.email || a.contact?.email || ''}
                       </p>
                       <p>
-                        <strong>Birthday:</strong> {patients.find((p) => p.id === a.patient_id)?.birthdate || a.contact?.birthday || ''}
+                        <strong>Birthday:</strong> {patients.find((p) => p.id === a.patient_id)?.birthday || a.contact?.birthday || ''}
                       </p>
                       <p>
                         <strong>Address:</strong> {patients.find((p) => p.id === a.patient_id)?.address || a.contact?.address || ''}
@@ -457,6 +523,9 @@ function Appointments() {
       {isEditModalOpen && (
         <EditAppointmentModal
           appointment={selectedAppointment}
+          initialContact={getSelectedPatientData('contact')}
+          initialAge={getSelectedPatientData('age')}
+          initialSex={getSelectedPatientData('sex')}
           onSave={handleSaveAppointment}
           onCancel={handleCloseModal}
           dentists={dentists}

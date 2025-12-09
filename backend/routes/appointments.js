@@ -6,8 +6,21 @@ const db = require("../db");
 function parseTime(dateTimeStr) {
   if (!dateTimeStr) return null;
 
-  const parts = dateTimeStr.match(/(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}) (AM|PM)/);
+  // Regex for "YYYY-MM-DD HH:MM AM/PM"
+  const parts = dateTimeStr.match(/(\d{4})-(\d{2})-(\d{2}) (\d{1,2}):(\d{2}) (AM|PM)/);
+  
   if (!parts) {
+    // FALLBACK: If string is just "09:00 AM", we attach today's date to prevent NULL errors
+    const timeParts = dateTimeStr.match(/(\d{1,2}):(\d{2}) (AM|PM)/);
+    if (timeParts) {
+        const today = new Date();
+        const year = today.getFullYear();
+        const month = String(today.getMonth() + 1).padStart(2, '0');
+        const day = String(today.getDate()).padStart(2, '0');
+        console.warn(`Warning: Time-only string received "${dateTimeStr}". Defaulting to today: ${year}-${month}-${day}`);
+        // Recursively call with fixed string
+        return parseTime(`${year}-${month}-${day} ${dateTimeStr}`);
+    }
     console.error("Invalid dateTimeStr format:", dateTimeStr);
     return null;
   }
@@ -81,18 +94,23 @@ router.put("/:id", async (req, res) => {
   const values = [];
 
   if (fields.timeStart) {
-    setClauses.push("appointment_datetime = ?");
-    values.push(parseTime(fields.timeStart));
+    const parsed = parseTime(fields.timeStart);
+    if (parsed) {
+        setClauses.push("appointment_datetime = ?");
+        values.push(parsed);
+    }
   }
   if (fields.timeEnd) {
-    setClauses.push("end_datetime = ?");
-    values.push(parseTime(fields.timeEnd));
+    const parsed = parseTime(fields.timeEnd);
+    if (parsed) {
+        setClauses.push("end_datetime = ?");
+        values.push(parsed);
+    }
   }
   if (fields.dentist_id) {
     setClauses.push("dentist_id = ?");
     values.push(fields.dentist_id);
   }
-  // Map frontend 'procedure' to backend 'reason'
   if (fields.procedure) {
     setClauses.push("reason = ?");
     values.push(fields.procedure);
@@ -106,7 +124,7 @@ router.put("/:id", async (req, res) => {
     values.push(fields.status);
   }
 
-  if (setClauses.length === 0) return res.status(400).json({ message: "No updates" });
+  if (setClauses.length === 0) return res.status(400).json({ message: "No valid updates" });
 
   values.push(id);
   await db.query(`UPDATE appointments SET ${setClauses.join(", ")} WHERE id = ?`, values);
@@ -126,7 +144,6 @@ router.delete("/:id", async (req, res) => {
   res.json({ message: "Appointment deleted" });
 });
 
-// ADDED: Get a single appointment by its ID, with patient and dentist names
 router.get("/:id", async (req, res) => {
   const { id } = req.params;
   try {

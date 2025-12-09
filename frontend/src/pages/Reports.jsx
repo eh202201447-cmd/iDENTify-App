@@ -1,140 +1,6 @@
-// import React, { useEffect } from "react";
-// // Note: heavy libs (jsPDF, XLSX) are imported dynamically inside actions to keep the initial bundle small
-// import useApi from "../hooks/useApi";
-// import useAppStore from "../store/useAppStore";
-// import "../styles/pages/Reports.css";
-
-// function Reports() {
-//   const api = useApi();
-//   const reports = useAppStore((state) => state.reports);
-//   const { dailySummary, dentistPerformance } = reports || {};
-
-//   useEffect(() => {
-//     api.loadReports();
-//   }, []);
-
-//   const exportToPDF = async () => {
-//     const jsPDF = (await import("jspdf")).default;
-//     const autoTable = (await import("jspdf-autotable")).default;
-
-//     const doc = new jsPDF();
-
-//     autoTable(doc, {
-//       html: "#daily-summary-table",
-//     });
-
-//     const finalY = (doc).lastAutoTable.finalY || 10;
-
-//     autoTable(doc, {
-//       html: "#dentist-performance-table",
-//       startY: finalY + 10,
-//     });
-
-//     doc.save("reports.pdf");
-//   };
-
-//   const exportToExcel = async () => {
-//     if (!dailySummary || !dentistPerformance) {
-//       return;
-//     }
-//     const XLSX = await import("xlsx");
-//     const dailySummaryWs = XLSX.utils.json_to_sheet([dailySummary]);
-//     const dentistPerformanceWs = XLSX.utils.json_to_sheet(dentistPerformance);
-//     const wb = XLSX.utils.book_new();
-//     XLSX.utils.book_append_sheet(wb, dailySummaryWs, "Daily Summary");
-//     XLSX.utils.book_append_sheet(
-//       wb,
-//       dentistPerformanceWs,
-//       "Dentist Performance"
-//     );
-//     XLSX.writeFile(wb, "reports.xlsx");
-//   };
-
-//   return (
-//     <div className="reports-page">
-//       <div className="reports-header">
-//         <h2 className="reports-title">Reports</h2>
-//         <div className="export-buttons">
-//           <button onClick={exportToPDF} className="export-btn pdf" disabled={!reports}>
-//             Export to PDF
-//           </button>
-//           <button onClick={exportToExcel} className="export-btn excel" disabled={!reports}>
-//             Export to Excel
-//           </button>
-//         </div>
-//       </div>
-
-//       {api.loading && <p>Loading reports...</p>}
-//       {api.error && <p>Error loading reports: {api.error.message}</p>}
-
-//       {!api.loading && !api.error && reports && (
-//         <>
-//           <div className="report-section">
-//             <h3 className="report-subtitle">Daily Summary</h3>
-//             <table id="daily-summary-table">
-//               <thead>
-//                 <tr>
-//                   <th>Metric</th>
-//                   <th>Value</th>
-//                 </tr>
-//               </thead>
-//               <tbody>
-//                 <tr>
-//                   <td>Patients Seen</td>
-//                   <td>{dailySummary?.patientsSeen}</td>
-//                 </tr>
-//                 <tr>
-//                   <td>Procedures Done</td>
-//                   <td>{dailySummary?.proceduresDone}</td>
-//                 </tr>
-//                 <tr>
-//                   <td>New Patients</td>
-//                   <td>{dailySummary?.newPatients}</td>
-//                 </tr>
-//                 <tr>
-//                   <td>Average Treatment Duration</td>
-//                   <td>{dailySummary?.avgTreatmentDuration}</td>
-//                 </tr>
-//               </tbody>
-//             </table>
-//           </div>
-
-//           <div className="report-section">
-//             <h3 className="report-subtitle">Dentist Performance</h3>
-//             <table id="dentist-performance-table">
-//               <thead>
-//                 <tr>
-//                   <th>Dentist</th>
-//                   <th>Patients Handled</th>
-//                   <th>Treatment Distribution</th>
-//                   <th>Avg. Time per Patient (minutes)</th>
-//                 </tr>
-//               </thead>
-//               <tbody>
-//                 {dentistPerformance?.map((dentist) => (
-//                   <tr key={dentist.id}>
-//                     <td>{dentist.name}</td>
-//                     <td>{dentist.patientsHandled}</td>
-//                     <td>
-//                       {Object.entries(dentist.treatmentDistribution)
-//                         .map(([key, value]) => `${key}: ${value}`)
-//                         .join(", ")}
-//                     </td>
-//                     <td>{dentist.avgTimePerPatient}</td>
-//                   </tr>
-//                 ))}
-//               </tbody>
-//             </table>
-//           </div>
-//         </>
-//       )}
-//     </div>
-//   );
-// }
-
-// export default Reports;
-
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
+import DatePicker from "react-datepicker";
+import "react-datepicker/dist/react-datepicker.css";
 import useApi from "../hooks/useApi";
 import useAppStore from "../store/useAppStore";
 import "../styles/pages/Reports.css";
@@ -143,12 +9,15 @@ function Reports() {
   const api = useApi();
   const reports = useAppStore((state) => state.reports);
   const { dailySummary, dentistPerformance } = reports || {};
+  const [selectedDate, setSelectedDate] = useState(new Date());
 
   useEffect(() => {
-    api.loadReports();
-  }, []);
+    // Convert to YYYY-MM-DD for backend
+    const dateStr = selectedDate.toISOString().split('T')[0];
+    api.loadReports(dateStr).catch(err => console.error("Load reports failed", err));
+  }, [selectedDate]);
 
-  const hasData = dailySummary && dentistPerformance && dentistPerformance.length > 0;
+  const hasData = dailySummary && dentistPerformance;
 
   const exportToPDF = async () => {
     if (!hasData) return;
@@ -156,79 +25,120 @@ function Reports() {
     const autoTable = (await import("jspdf-autotable")).default;
 
     const doc = new jsPDF();
+    const dateStr = selectedDate.toLocaleDateString();
 
-    doc.text("Daily Summary", 14, 15);
+    doc.setFontSize(18);
+    doc.text(`Clinic Report - ${dateStr}`, 14, 15);
+
+    doc.setFontSize(14);
+    doc.text("Daily Summary", 14, 25);
+
     autoTable(doc, {
-      html: "#daily-summary-table",
-      startY: 20,
+      startY: 30,
+      head: [['Metric', 'Value']],
+      body: [
+        ['Patients Seen', dailySummary.patientsSeen],
+        ['Procedures Done', dailySummary.proceduresDone],
+        ['New Patients', dailySummary.newPatients],
+        ['Avg. Treatment Duration', dailySummary.avgTreatmentDuration],
+      ],
     });
 
-    const finalY = (doc).lastAutoTable.finalY || 30;
-    
+    const finalY = (doc).lastAutoTable.finalY || 40;
+
     doc.text("Dentist Performance", 14, finalY + 15);
-    autoTable(doc, {
-      html: "#dentist-performance-table",
-      startY: finalY + 20,
+
+    const performanceBody = dentistPerformance.map(d => {
+      const distributionStr = Object.entries(d.treatmentDistribution || {})
+        .map(([k, v]) => `${k}: ${v}`)
+        .join(", ");
+
+      return [
+        d.name,
+        d.patientsHandled,
+        distributionStr || "None",
+        `${Math.round(d.avgTimePerPatient || 0)} min`
+      ];
     });
 
-    doc.save("clinic_report.pdf");
+    autoTable(doc, {
+      startY: finalY + 20,
+      head: [['Dentist', 'Patients', 'Procedures', 'Avg Time']],
+      body: performanceBody,
+    });
+
+    doc.save(`clinic_report_${selectedDate.toISOString().slice(0, 10)}.pdf`);
   };
 
   const exportToExcel = async () => {
     if (!hasData) return;
     const XLSX = await import("xlsx");
 
-    // 1. Prepare Daily Summary Sheet
-    const dailySummaryWs = XLSX.utils.json_to_sheet([dailySummary]);
+    const summaryData = [
+      { Metric: "Date", Value: selectedDate.toLocaleDateString() },
+      { Metric: "Patients Seen", Value: dailySummary.patientsSeen },
+      { Metric: "Procedures Done", Value: dailySummary.proceduresDone },
+      { Metric: "New Patients", Value: dailySummary.newPatients },
+      { Metric: "Avg Duration", Value: dailySummary.avgTreatmentDuration },
+    ];
+    const dailySummaryWs = XLSX.utils.json_to_sheet(summaryData);
 
-    // 2. Prepare Dentist Performance Sheet (Flattening the nested object)
-    const flattenedPerformance = dentistPerformance.map(d => ({
-      ID: d.id,
+    const performanceData = dentistPerformance.map(d => ({
       Dentist: d.name,
       Patients_Handled: d.patientsHandled,
-      Avg_Time_Per_Patient: d.avgTimePerPatient,
-      // Convert the object { "Cleaning": 2 } to string "Cleaning: 2"
+      Avg_Time_Per_Patient: `${Math.round(d.avgTimePerPatient || 0)} min`,
       Treatment_Distribution: Object.entries(d.treatmentDistribution || {})
         .map(([k, v]) => `${k}: ${v}`)
         .join(", ")
     }));
 
-    const dentistPerformanceWs = XLSX.utils.json_to_sheet(flattenedPerformance);
+    const dentistPerformanceWs = XLSX.utils.json_to_sheet(performanceData);
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, dailySummaryWs, "Daily Summary");
     XLSX.utils.book_append_sheet(wb, dentistPerformanceWs, "Dentist Performance");
-    XLSX.writeFile(wb, "clinic_report.xlsx");
+
+    XLSX.writeFile(wb, `clinic_report_${selectedDate.toISOString().slice(0, 10)}.xlsx`);
   };
 
   return (
     <div className="reports-page">
       <div className="reports-header">
         <h2 className="reports-title">Reports</h2>
-        <div className="export-buttons">
-          <button onClick={exportToPDF} className="export-btn pdf" disabled={!hasData}>
-            Export to PDF
-          </button>
-          <button onClick={exportToExcel} className="export-btn excel" disabled={!hasData}>
-            Export to Excel
-          </button>
+        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <span className="small-label">Select Date</span>
+            <DatePicker
+              selected={selectedDate}
+              onChange={date => setSelectedDate(date)}
+              className="datepicker-input"
+              dateFormat="MMMM d, yyyy"
+            />
+          </div>
+          <div className="export-buttons" style={{ marginTop: '1.5rem' }}>
+            <button onClick={exportToPDF} className="export-btn pdf" disabled={!hasData}>
+              Export PDF
+            </button>
+            <button onClick={exportToExcel} className="export-btn excel" disabled={!hasData}>
+              Export Excel
+            </button>
+          </div>
         </div>
       </div>
 
       {api.loading && <p>Loading reports...</p>}
-      
+
       {api.error && (
         <div className="error-message" style={{ color: 'red', padding: '1rem', background: '#ffe3e3', borderRadius: '8px' }}>
           <h3>Error loading reports</h3>
-          <p>The server encountered an error (500). Please ensure your database schema is updated.</p>
-          <code style={{ display: 'block', marginTop: '10px' }}>{api.error.message}</code>
+          <p>Ensure database schema is updated.</p>
         </div>
       )}
 
-      {!api.loading && !api.error && hasData && (
+      {!api.loading && hasData && (
         <>
           <div className="report-section">
-            <h3 className="report-subtitle">Daily Summary</h3>
+            <h3 className="report-subtitle">Daily Summary ({selectedDate.toLocaleDateString()})</h3>
             <table id="daily-summary-table">
               <thead>
                 <tr>
@@ -238,20 +148,20 @@ function Reports() {
               </thead>
               <tbody>
                 <tr>
-                  <td>Patients Seen</td>
-                  <td>{dailySummary?.patientsSeen}</td>
+                  <td>Patients Seen (Done)</td>
+                  <td>{dailySummary.patientsSeen}</td>
                 </tr>
                 <tr>
-                  <td>Procedures Done</td>
-                  <td>{dailySummary?.proceduresDone}</td>
+                  <td>Procedures Completed</td>
+                  <td>{dailySummary.proceduresDone}</td>
                 </tr>
                 <tr>
-                  <td>New Patients</td>
-                  <td>{dailySummary?.newPatients}</td>
+                  <td>New Patients Registered Today</td>
+                  <td>{dailySummary.newPatients}</td>
                 </tr>
                 <tr>
                   <td>Average Treatment Duration</td>
-                  <td>{dailySummary?.avgTreatmentDuration}</td>
+                  <td>{dailySummary.avgTreatmentDuration}</td>
                 </tr>
               </tbody>
             </table>
@@ -265,30 +175,29 @@ function Reports() {
                   <th>Dentist</th>
                   <th>Patients Handled</th>
                   <th>Treatment Distribution</th>
-                  <th>Avg. Time per Patient (min)</th>
+                  <th>Avg. Time per Patient</th>
                 </tr>
               </thead>
               <tbody>
-                {dentistPerformance?.map((dentist) => (
+                {dentistPerformance.length === 0 && (
+                  <tr><td colSpan="4">No performance data recorded for this date.</td></tr>
+                )}
+                {dentistPerformance.map((dentist) => (
                   <tr key={dentist.id}>
                     <td>{dentist.name}</td>
                     <td>{dentist.patientsHandled}</td>
                     <td>
                       {Object.entries(dentist.treatmentDistribution || {})
                         .map(([key, value]) => `${key}: ${value}`)
-                        .join(", ")}
+                        .join(", ") || "-"}
                     </td>
-                    <td>{Math.round(dentist.avgTimePerPatient || 0)}</td>
+                    <td>{Math.round(dentist.avgTimePerPatient || 0)} min</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         </>
-      )}
-      
-      {!api.loading && !api.error && !hasData && (
-        <p className="muted-text">No report data available for today.</p>
       )}
     </div>
   );

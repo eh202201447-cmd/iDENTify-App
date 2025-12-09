@@ -1,43 +1,65 @@
-// const express = require("express");
-// const router = express.Router();
-
-// // TODO: Replace this with a database query
-// const dentists = [
-//   { id: 1, name: "Dr. Paul Zaragoza" },
-//   { id: 2, name: "Dr. Erica Aquino" },
-//   { id: 3, name: "Dr. Hernane Benedicto" },
-// ];
-
-// router.get("/", async (req, res) => {
-//   res.json(dentists);
-// });
-
-// module.exports = router;
-
 const express = require("express");
 const router = express.Router();
 const db = require("../db");
 
+// Get all dentists
 router.get("/", async (req, res) => {
   try {
     const [rows] = await db.query("SELECT * FROM dentists");
-    // Merge with static configuration if you want to keep schedule logic in backend,
-    // otherwise just returning rows is fine for basic data.
-    // The frontend currently expects specific fields like 'days', 'operatingHours' which aren't in the DB.
-    // We will attach default structure so the frontend doesn't break.
-    const enhancedRows = rows.map(d => ({
-        ...d,
-        shortName: d.name,
-        days: [1, 2, 3, 4, 5], // Default M-F
-        operatingHours: { start: "09:00", end: "17:00" },
-        lunch: { start: "12:00", end: "13:00" },
-        breaks: [],
-        leaveDays: [],
-        assignedPatientsToday: [] // This would need a complex join, leaving empty for now
-    }));
+    
+    // Transform DB rows to match Frontend expectation
+    const enhancedRows = rows.map(d => {
+        // Parse the JSON schedule column
+        const schedule = typeof d.schedule === 'string' ? JSON.parse(d.schedule) : (d.schedule || {});
+        
+        return {
+            id: d.id,
+            name: d.name,
+            shortName: d.name, // Frontend uses shortName as key sometimes
+            specialization: d.specialty, // Map 'specialty' column to 'specialization' prop
+            status: d.status || 'Available',
+            // Default schedule structure if null
+            days: schedule.days || [1, 2, 3, 4, 5], 
+            operatingHours: schedule.operatingHours || { start: "09:00", end: "17:00" },
+            lunch: schedule.lunch || { start: "12:00", end: "13:00" },
+            breaks: schedule.breaks || [],
+            leaveDays: schedule.leaveDays || [],
+            assignedPatientsToday: [] // This requires complex join, leaving empty for now
+        };
+    });
     res.json(enhancedRows);
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// Update dentist (Status, Schedule, Leave, etc.)
+router.put("/:id", async (req, res) => {
+  const { id } = req.params;
+  const { status, days, operatingHours, lunch, breaks, leaveDays } = req.body;
+
+  // Construct the schedule JSON object
+  const scheduleObj = {
+    days,
+    operatingHours,
+    lunch,
+    breaks,
+    leaveDays
+  };
+
+  const scheduleJson = JSON.stringify(scheduleObj);
+
+  try {
+    await db.query(
+      "UPDATE dentists SET status = ?, schedule = ? WHERE id = ?",
+      [status, scheduleJson, id]
+    );
+
+    // Return the data so frontend store can update
+    res.json({ id: Number(id), ...req.body });
+  } catch (error) {
+    console.error("Error updating dentist:", error);
+    res.status(500).json({ message: "Database error" });
   }
 });
 

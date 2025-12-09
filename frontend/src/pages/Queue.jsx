@@ -4,6 +4,7 @@ import toast from "react-hot-toast";
 import "../styles/pages/Queue.css";
 import AddWalkInModal from "../components/AddWalkInModal";
 import StatusBadge from "../components/StatusBadge";
+import ConfirmationModal from "../components/ConfirmationModal";
 import useAppStore from "../store/useAppStore";
 import useApi from "../hooks/useApi";
 
@@ -20,14 +21,21 @@ function Queue() {
   const queue = useAppStore((state) => state.queue);
   const patients = useAppStore((state) => state.patients);
   const dentists = useAppStore((state) => state.dentists);
+
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState(null);
   const [draggingId, setDraggingId] = useState(null);
 
   useEffect(() => {
-    // Load both queue and dentists to ensure assignments work
+    // Added loadPatients() to ensure we have the full patient list for name lookup
     const loadData = async () => {
       try {
-        await Promise.all([api.loadQueue(), api.loadDentists()]);
+        await Promise.all([
+          api.loadQueue(),
+          api.loadDentists(),
+          api.loadPatients()
+        ]);
       } catch (e) {
         console.error("Failed to load queue data", e);
       }
@@ -38,13 +46,12 @@ function Queue() {
   const handleAddWalkIn = async (patientData) => {
     try {
       // 1. Create Patient
-      // Map AddWalkInModal fields to backend fields
       const patientPayload = {
         full_name: patientData.full_name,
-        gender: patientData.sex, // Map sex -> gender
-        contact_number: patientData.contact, // Map contact -> contact_number
+        gender: patientData.sex,
+        contact_number: patientData.contact,
         medicalAlerts: [],
-        vitals: { age: patientData.age } // Store age in vitals
+        vitals: { age: patientData.age }
       };
 
       const createdPatient = await api.createPatient(patientPayload);
@@ -54,10 +61,10 @@ function Queue() {
 
       // 2. Add to Queue
       const dentistObj = dentists.find(d => d.name === patientData.assignedDentist);
-      
+
       await api.addQueue({
         patient_id: patientId,
-        dentist_id: dentistObj?.id, // Send ID, not name
+        dentist_id: dentistObj?.id,
         source: "walk-in",
         status: "Checked-In",
         notes: patientData.notes,
@@ -78,12 +85,15 @@ function Queue() {
     return minutes <= 0 ? "Now" : `${minutes} min`;
   };
 
-  // MODIFIED: Accepts the full queue item object
   const handleAction = (queueItem) => {
+    // Find the full patient object to pass to the form
+    const fullPatientData = patients.find(p => p.id === queueItem.patient_id);
+
     navigate(`/app/patient/${queueItem.patient_id}/`, {
-      state: { 
-        dentistId: queueItem.dentist_id, // Pass the assigned dentist ID
-        status: queueItem.status
+      state: {
+        dentistId: queueItem.dentist_id,
+        status: queueItem.status,
+        patientData: fullPatientData // Explicitly passing patient data
       }
     });
   };
@@ -97,9 +107,28 @@ function Queue() {
     }
   };
 
+  const handleDeleteClick = (item) => {
+    setItemToDelete(item);
+    setIsDeleteModalOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!itemToDelete) return;
+    try {
+      await api.deleteQueue(itemToDelete.id);
+      toast.success("Removed from queue");
+    } catch (err) {
+      console.error("Failed to delete queue item", err);
+      toast.error("Failed to delete");
+    } finally {
+      setIsDeleteModalOpen(false);
+      setItemToDelete(null);
+    }
+  };
+
   const handleDragStart = (id) => setDraggingId(id);
   const handleDragOver = (e) => e.preventDefault();
-  const handleDrop = () => {};
+  const handleDrop = () => { };
 
   const calculateWaitingTimeSince = (checkedInTime) => {
     if (!checkedInTime) return "--";
@@ -116,11 +145,10 @@ function Queue() {
       queue
         .filter((item) => item.status !== "Done")
         .map((item, index) => {
-          // Fallback to item.full_name if patient object isn't found
+          // Robust name lookup: Try store first, then fallback to queue item's joined name
           const patient = patients.find((p) => p.id === item.patient_id);
           const patientName = patient ? (patient.name || patient.full_name) : (item.full_name || "Unknown");
-          
-          // Fallback to item.dentist_name if dentist object isn't found
+
           const dentist = dentists.find((d) => d.id === item.dentist_id);
           const dentistName = dentist ? dentist.name : (item.dentist_name || "Unassigned");
 
@@ -162,6 +190,13 @@ function Queue() {
         onAddPatient={handleAddWalkIn}
       />
 
+      <ConfirmationModal
+        isOpen={isDeleteModalOpen}
+        onClose={() => setIsDeleteModalOpen(false)}
+        onConfirm={handleConfirmDelete}
+        message={`Are you sure you want to remove ${itemToDelete?.name || 'this patient'} from the queue?`}
+      />
+
       <div className="queue-table-container">
         <table className="queue-table">
           <thead>
@@ -179,7 +214,7 @@ function Queue() {
           </thead>
           <tbody>
             {queueWithDetails.length === 0 ? (
-               <tr><td colSpan="9" style={{textAlign: 'center', padding: '2rem'}}>No patients in queue.</td></tr>
+              <tr><td colSpan="9" style={{ textAlign: 'center', padding: '2rem' }}>No patients in queue.</td></tr>
             ) : (
               queueWithDetails.map((q) => (
                 <tr
@@ -216,9 +251,15 @@ function Queue() {
                     <div className="staff-note">{q.notes || '-'}</div>
                   </td>
                   <td>
-                    {/* MODIFIED: Pass the whole object 'q' */}
                     <button className="action-btn" onClick={() => handleAction(q)}>
                       Start
+                    </button>
+                    <button
+                      className="action-btn"
+                      style={{ marginLeft: '0.5rem', backgroundColor: '#dc3545' }}
+                      onClick={() => handleDeleteClick(q)}
+                    >
+                      Delete
                     </button>
                   </td>
                 </tr>

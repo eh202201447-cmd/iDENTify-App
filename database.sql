@@ -2,12 +2,21 @@ CREATE DATABASE IF NOT EXISTS `identify_app`;
 
 USE `identify_app`;
 
+-- DENTISTS TABLE
+-- Added 'status' for real-time availability (Available/Busy/Off)
+-- Added 'schedule' JSON for storing days, hours, breaks, and leave days
 CREATE TABLE IF NOT EXISTS `dentists` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
   `name` VARCHAR(255) NOT NULL,
-  `specialty` VARCHAR(255)
+  `specialty` VARCHAR(255),
+  `status` VARCHAR(50) DEFAULT 'Available',
+  `schedule` JSON
 );
 
+-- PATIENTS TABLE
+-- Added 'parent_id' for family linking
+-- Added 'xrays' LONGTEXT for storing Base64 images
+-- Added 'created_at' for the Reports page (New Patients count)
 CREATE TABLE IF NOT EXISTS `patients` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
   `full_name` VARCHAR(255) NOT NULL,
@@ -17,9 +26,15 @@ CREATE TABLE IF NOT EXISTS `patients` (
   `contact_number` VARCHAR(50),
   `email` VARCHAR(255),
   `medical_alerts` TEXT,
-  `vitals` JSON
+  `vitals` JSON,
+  `parent_id` INT,
+  `xrays` LONGTEXT,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (`parent_id`) REFERENCES `patients`(`id`) ON DELETE SET NULL
 );
 
+-- APPOINTMENTS TABLE
+-- Added 'created_at' to track booking time vs appointment time
 CREATE TABLE IF NOT EXISTS `appointments` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
   `patient_id` INT,
@@ -29,10 +44,12 @@ CREATE TABLE IF NOT EXISTS `appointments` (
   `reason` TEXT,
   `notes` TEXT,
   `status` VARCHAR(50),
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (`patient_id`) REFERENCES `patients`(`id`) ON DELETE CASCADE,
   FOREIGN KEY (`dentist_id`) REFERENCES `dentists`(`id`) ON DELETE SET NULL
 );
 
+-- QUEUE TABLE
 CREATE TABLE IF NOT EXISTS `walk_in_queue` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
   `patient_id` INT,
@@ -47,6 +64,7 @@ CREATE TABLE IF NOT EXISTS `walk_in_queue` (
   FOREIGN KEY (`dentist_id`) REFERENCES `dentists`(`id`) ON DELETE SET NULL
 );
 
+-- TOOTH CONDITIONS TABLE
 CREATE TABLE IF NOT EXISTS `tooth_conditions` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
   `patient_id` INT,
@@ -57,6 +75,7 @@ CREATE TABLE IF NOT EXISTS `tooth_conditions` (
   FOREIGN KEY (`patient_id`) REFERENCES `patients`(`id`) ON DELETE CASCADE
 );
 
+-- TREATMENT TIMELINE TABLE
 CREATE TABLE IF NOT EXISTS `treatment_timeline` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
   `patient_id` INT,
@@ -69,6 +88,7 @@ CREATE TABLE IF NOT EXISTS `treatment_timeline` (
   FOREIGN KEY (`patient_id`) REFERENCES `patients`(`id`) ON DELETE CASCADE
 );
 
+-- MEDICATIONS TABLE
 CREATE TABLE IF NOT EXISTS `medications` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
   `patient_id` INT,
@@ -79,8 +99,8 @@ CREATE TABLE IF NOT EXISTS `medications` (
   FOREIGN KEY (`patient_id`) REFERENCES `patients`(`id`) ON DELETE CASCADE
 );
 
--- Initial Data
-INSERT INTO `dentists` (`name`, `specialty`) VALUES
-('Dr. Paul Zaragoza', 'General Dentist'),
-('Dr. Erica Aquino', 'Orthodontist'),
-('Dr. Hernane Benedicto', 'Prosthodontist');
+-- INITIAL DATA SEEDING
+INSERT INTO `dentists` (`name`, `specialty`, `status`, `schedule`) VALUES
+('Dr. Paul Zaragoza', 'General Dentist', 'Available', '{"days": [1,3,5], "operatingHours": {"start": "09:00", "end": "17:30"}, "lunch": {"start": "12:30", "end": "13:15"}, "breaks": [], "leaveDays": []}'),
+('Dr. Erica Aquino', 'Orthodontist', 'Available', '{"days": [2,4], "operatingHours": {"start": "10:00", "end": "18:00"}, "lunch": {"start": "13:00", "end": "14:00"}, "breaks": [], "leaveDays": []}'),
+('Dr. Hernane Benedicto', 'Prosthodontist', 'Available', '{"days": [1,2,3,4,5], "operatingHours": {"start": "08:30", "end": "17:00"}, "lunch": {"start": "12:00", "end": "12:45"}, "breaks": [], "leaveDays": []}');
