@@ -5,6 +5,38 @@ import { dentalServices } from "../data/services";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
+// --- HELPER FUNCTIONS FOR TIME CONVERSION ---
+
+// Convert "01:30 PM" (State format) -> "13:30" (Input format)
+function to24Hour(time12h) {
+  if (!time12h) return "";
+  const [time, modifier] = time12h.split(' ');
+  if (!time || !modifier) return time || ""; // Fallback
+
+  let [hours, minutes] = time.split(':');
+  if (hours === '12') {
+    hours = '00';
+  }
+  if (modifier === 'PM') {
+    hours = parseInt(hours, 10) + 12;
+  }
+  // Handle 12 PM -> 12:00, 12 AM -> 00:00
+  if (modifier === 'PM' && hours === 24) hours = 12;
+
+  return `${String(hours).padStart(2, '0')}:${minutes}`;
+}
+
+// Convert "13:30" (Input format) -> "01:30 PM" (State format)
+function to12Hour(time24h) {
+  if (!time24h) return "";
+  const [hours, minutes] = time24h.split(':');
+  let h = parseInt(hours, 10);
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  h = h % 12;
+  h = h ? h : 12; // the hour '0' should be '12'
+  return `${String(h).padStart(2, '0')}:${minutes} ${ampm}`;
+}
+
 function toMinutes(timeString) {
   if (!timeString) return 0;
   const parts = timeString.split(" ");
@@ -78,6 +110,16 @@ function EditAppointmentModal({ appointment, initialContact, initialAge, initial
     setFormData((prev) => ({
       ...prev,
       [name]: type === "checkbox" ? checked : value,
+    }));
+  };
+
+  // NEW: Specialized handler for Time Inputs
+  const handleTimeChange = (e) => {
+    const { name, value } = e.target; // value is in 24h format (e.g., "13:30")
+    const time12 = to12Hour(value);   // Convert to "01:30 PM"
+    setFormData((prev) => ({
+      ...prev,
+      [name]: time12,
     }));
   };
 
@@ -160,7 +202,12 @@ function EditAppointmentModal({ appointment, initialContact, initialAge, initial
 
   const handleSave = () => {
     if (!formData.patient_name.trim()) return toast.error("Patient name cannot be empty.");
-    if (selectedServices.length === 0) return toast.error("Please select at least one procedure.");
+
+    // Warn if empty, but don't crash validation if user intends to clear it
+    if (selectedServices.length === 0) {
+      toast.error("Please select at least one procedure.");
+      return;
+    }
 
     // Validate Schedule
     const conflictError = validateSchedule();
@@ -243,6 +290,27 @@ function EditAppointmentModal({ appointment, initialContact, initialAge, initial
             />
           </div>
 
+          <div className="form-group">
+            <label htmlFor="timeStart">Time Start</label>
+            <input
+              type="time" // CHANGED TO TIME
+              id="timeStart"
+              name="timeStart"
+              value={to24Hour(formData.timeStart)} // CONVERT STATE (12H) TO INPUT (24H)
+              onChange={handleTimeChange} // USE SPECIAL HANDLER
+            />
+          </div>
+          <div className="form-group">
+            <label htmlFor="timeEnd">Time End</label>
+            <input
+              type="time" // CHANGED TO TIME
+              id="timeEnd"
+              name="timeEnd"
+              value={to24Hour(formData.timeEnd)} // CONVERT STATE (12H) TO INPUT (24H)
+              onChange={handleTimeChange} // USE SPECIAL HANDLER
+            />
+          </div>
+
           <div className="form-group full-width">
             <label htmlFor="dentist">Dentist</label>
             <select
@@ -267,7 +335,6 @@ function EditAppointmentModal({ appointment, initialContact, initialAge, initial
               ))}
             </select>
 
-            {/* NEW: VISUAL SCHEDULE INFO */}
             {selectedDentist && (
               <div style={{ marginTop: '8px', padding: '10px', background: '#f0f9ff', borderRadius: '8px', fontSize: '0.9rem', color: '#0c4a6e', border: '1px solid #bae6fd' }}>
                 <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>Schedule for {selectedDentist.name}:</div>
@@ -276,29 +343,6 @@ function EditAppointmentModal({ appointment, initialContact, initialAge, initial
                 {selectedDentist.lunch && <div>🍽️ Lunch: {selectedDentist.lunch.start} - {selectedDentist.lunch.end}</div>}
               </div>
             )}
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="timeStart">Time Start</label>
-            <input
-              type="text"
-              id="timeStart"
-              name="timeStart"
-              value={formData.timeStart}
-              onChange={handleChange}
-              placeholder="e.g. 09:00 AM"
-            />
-          </div>
-          <div className="form-group">
-            <label htmlFor="timeEnd">Time End</label>
-            <input
-              type="text"
-              id="timeEnd"
-              name="timeEnd"
-              value={formData.timeEnd}
-              onChange={handleChange}
-              placeholder="e.g. 09:30 AM"
-            />
           </div>
 
           <div className="form-group full-width">
@@ -317,7 +361,6 @@ function EditAppointmentModal({ appointment, initialContact, initialAge, initial
             </select>
           </div>
 
-          {/* MULTI-SELECT PROCEDURE */}
           <div className="form-group full-width">
             <label>Procedures / Services</label>
             <div className="service-input-group">

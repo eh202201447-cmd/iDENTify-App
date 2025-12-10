@@ -22,13 +22,29 @@ router.get("/", async (req, res) => {
       ...p,
       medical_alerts: p.medical_alerts ? p.medical_alerts.split(',') : [],
       vitals: typeof p.vitals === 'string' ? JSON.parse(p.vitals) : (p.vitals || {}),
-      xrays: [] // Optimize: Don't send xrays on list view
+      xrays: [] 
     }));
     
     res.json(results);
   } catch (error) {
     console.error("Error fetching patients:", error);
     res.status(500).json({ message: "Server error fetching patients" });
+  }
+});
+
+// NEW: Get Family Members
+router.get("/:id/family", async (req, res) => {
+  const { id } = req.params;
+  try {
+    const [rows] = await db.query("SELECT * FROM patients WHERE parent_id = ?", [id]);
+    const results = rows.map(p => ({
+      ...p,
+      vitals: typeof p.vitals === 'string' ? JSON.parse(p.vitals) : (p.vitals || {})
+    }));
+    res.json(results);
+  } catch (error) {
+    console.error("Error fetching family:", error);
+    res.status(500).json({ message: "Server error" });
   }
 });
 
@@ -70,9 +86,6 @@ router.post("/", async (req, res) => {
   const dbVitalsString = JSON.stringify(dbVitals);
   const dbXraysString = JSON.stringify(xrays || []);
   
-  // FIX: Explicitly set creation time if needed, or rely on DB default
-  // Ideally, use the DB default, but ensure your Reports query matches the DB timezone.
-  
   try {
     const [result] = await db.query(
       `INSERT INTO patients (full_name, birthdate, gender, address, contact_number, email, medical_alerts, vitals, xrays, parent_id)
@@ -106,6 +119,7 @@ router.put("/:id", async (req, res) => {
   if (dentist_id) dbVitals.dentist_id = dentist_id;
   const dbVitalsString = JSON.stringify(dbVitals);
   
+  // Logic: Only update xrays if explicitly provided (to avoid overwriting with null)
   let dbXraysString = null;
   if (xrays !== undefined) {
       dbXraysString = JSON.stringify(xrays);
@@ -136,4 +150,4 @@ router.put("/:id", async (req, res) => {
   }
 });
 
-module.exports = router;
+module.exports = router;f
