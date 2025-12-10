@@ -1,10 +1,21 @@
-import React, { useEffect, useMemo, useState, useCallback } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import "../styles/pages/Dentists.css";
 import useAppStore from "../store/useAppStore";
 import useApi from "../hooks/useApi";
 import toast from "react-hot-toast";
+
+// Helper for day labels
+const DAYS = [
+  { label: "S", value: 0 },
+  { label: "M", value: 1 },
+  { label: "T", value: 2 },
+  { label: "W", value: 3 },
+  { label: "T", value: 4 },
+  { label: "F", value: 5 },
+  { label: "S", value: 6 },
+];
 
 function Dentists() {
   const api = useApi();
@@ -54,6 +65,21 @@ function Dentists() {
       ...dentist,
       lunch: { ...dentist.lunch, [field]: value }
     };
+    saveDentistChanges(updated);
+  };
+
+  // --- NEW: TOGGLE WORKING DAYS ---
+  const toggleWorkingDay = (dentist, dayIndex) => {
+    const currentDays = dentist.days || [];
+    let newDays;
+    if (currentDays.includes(dayIndex)) {
+      // Remove day
+      newDays = currentDays.filter(d => d !== dayIndex);
+    } else {
+      // Add day and sort
+      newDays = [...currentDays, dayIndex].sort();
+    }
+    const updated = { ...dentist, days: newDays };
     saveDentistChanges(updated);
   };
 
@@ -137,12 +163,8 @@ function Dentists() {
   };
 
   const getAssignedCount = (dentistId) => {
-    // Count appointments for this dentist on the selected date
     return appointments.filter(a => {
       if (a.dentist_id !== dentistId) return false;
-      // Check date match
-      // Assuming a.timeStart or a.appointment_datetime contains the date
-      // Simplistic check string matching:
       return (a.timeStart && a.timeStart.includes(selectedDateStr))
         || (a.appointment_datetime && a.appointment_datetime.startsWith(selectedDateStr));
     }).length;
@@ -158,7 +180,6 @@ function Dentists() {
           filters.specialization === "All" ||
           filters.specialization === d.specialization;
 
-        // Looser match for status to account for "Off (Leave)" etc
         const availabilityMatch =
           filters.availability === "All" ||
           computedStatus.includes(filters.availability);
@@ -202,7 +223,6 @@ function Dentists() {
             }
           >
             <option value="All">All</option>
-            {/* Unique specializations */}
             {Array.from(new Set(dentists.map(d => d.specialization))).map(s => (
               <option key={s} value={s}>{s}</option>
             ))}
@@ -251,6 +271,27 @@ function Dentists() {
               </div>
 
               <div className="schedule-grid">
+
+                {/* 1. WORKING DAYS SELECTOR */}
+                <div style={{ gridColumn: '1 / -1', borderBottom: '1px solid #eee', paddingBottom: '1rem' }}>
+                  <p className="small-label">Working Days</p>
+                  <div className="days-selector">
+                    {DAYS.map((day) => {
+                      const isActive = d.days?.includes(day.value);
+                      return (
+                        <button
+                          key={day.value}
+                          className={`day-toggle ${isActive ? 'active' : ''}`}
+                          onClick={() => toggleWorkingDay(d, day.value)}
+                          title={`Toggle ${day.label}`}
+                        >
+                          {day.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
                 <div>
                   <p className="small-label">Operating hours</p>
                   <div className="schedule-row">

@@ -99,6 +99,8 @@
   border-radius: 20px;
   font-weight: bold;
   font-size: 0.9rem;
+  border: none;
+  cursor: pointer;
 }
 
 .status-available {
@@ -115,6 +117,40 @@
   background-color: #f8f9fa;
   color: #868e96;
 }
+
+/* NEW: Days Selector Styles */
+.days-selector {
+  display: flex;
+  gap: 8px;
+}
+
+.day-toggle {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid #dee2e6;
+  background-color: #f8f9fa;
+  color: #adb5bd;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.day-toggle:hover {
+  border-color: #007bff;
+  color: #007bff;
+}
+
+.day-toggle.active {
+  background-color: #007bff;
+  color: white;
+  border-color: #007bff;
+}
+
+/* --- End New Styles --- */
 
 .busy-banner {
   display: flex;

@@ -2,11 +2,11 @@ const express = require("express");
 const router = express.Router();
 const db = require("../db");
 
-// Get all patients (OPTIMIZED: Does NOT fetch xrays to prevent crash)
+// Get all patients
 router.get("/", async (req, res) => {
   try {
     const { email } = req.query;
-    let query = "SELECT id, full_name, birthdate, gender, address, contact_number, email, medical_alerts, vitals, parent_id FROM patients";
+    let query = "SELECT * FROM patients";
     let params = [];
 
     if (email) {
@@ -22,13 +22,32 @@ router.get("/", async (req, res) => {
       ...p,
       medical_alerts: p.medical_alerts ? p.medical_alerts.split(',') : [],
       vitals: typeof p.vitals === 'string' ? JSON.parse(p.vitals) : (p.vitals || {}),
-      xrays: [] // Return empty array for list view to save bandwidth
+      xrays: [] // Optimize: Don't send xrays on list view
     }));
     
     res.json(results);
   } catch (error) {
     console.error("Error fetching patients:", error);
     res.status(500).json({ message: "Server error fetching patients" });
+  }
+});
+
+// Get Single Patient
+router.get("/:id", async (req, res) => {
+  const { id } = req.params;
+  try {
+    const [rows] = await db.query("SELECT * FROM patients WHERE id = ?", [id]);
+    if (rows.length === 0) return res.status(404).json({ message: "Patient not found" });
+
+    const patient = rows[0];
+    patient.medical_alerts = patient.medical_alerts ? patient.medical_alerts.split(',') : [];
+    patient.vitals = typeof patient.vitals === 'string' ? JSON.parse(patient.vitals) : (patient.vitals || {});
+    patient.xrays = patient.xrays ? JSON.parse(patient.xrays) : [];
+    
+    res.json(patient);
+  } catch (error) {
+    console.error("Error fetching patient:", error);
+    res.status(500).json({ message: "Server error" });
   }
 });
 
@@ -50,7 +69,10 @@ router.post("/", async (req, res) => {
   
   const dbVitalsString = JSON.stringify(dbVitals);
   const dbXraysString = JSON.stringify(xrays || []);
-
+  
+  // FIX: Explicitly set creation time if needed, or rely on DB default
+  // Ideally, use the DB default, but ensure your Reports query matches the DB timezone.
+  
   try {
     const [result] = await db.query(
       `INSERT INTO patients (full_name, birthdate, gender, address, contact_number, email, medical_alerts, vitals, xrays, parent_id)
@@ -59,41 +81,10 @@ router.post("/", async (req, res) => {
     );
 
     const [rows] = await db.query("SELECT * FROM patients WHERE id = ?", [result.insertId]);
-    const newPatient = rows[0];
-    newPatient.xrays = newPatient.xrays ? JSON.parse(newPatient.xrays) : [];
-    newPatient.vitals = typeof newPatient.vitals === 'string' ? JSON.parse(newPatient.vitals) : (newPatient.vitals || {});
-    
-    res.status(201).json(newPatient);
+    res.status(201).json(rows[0]);
   } catch (error) {
     console.error("Error creating patient:", error);
     res.status(500).json({ message: "Database error while creating patient" });
-  }
-});
-
-// Get single patient (INCLUDES XRAYS)
-router.get("/:id", async (req, res) => {
-  const { id } = req.params;
-  try {
-    const [rows] = await db.query("SELECT * FROM patients WHERE id = ?", [id]);
-    if (rows.length === 0) {
-      return res.status(404).json({ message: "Patient not found" });
-    }
-    const patient = rows[0];
-    patient.medical_alerts = patient.medical_alerts ? patient.medical_alerts.split(',') : [];
-    patient.vitals = typeof patient.vitals === 'string' ? JSON.parse(patient.vitals) : (patient.vitals || {});
-    
-    // Parse X-rays safely
-    try {
-        patient.xrays = patient.xrays ? JSON.parse(patient.xrays) : [];
-    } catch (e) {
-        console.error("Error parsing xrays JSON:", e);
-        patient.xrays = [];
-    }
-    
-    res.json(patient);
-  } catch (error) {
-    console.error("Error fetching patient:", error);
-    res.status(500).json({ message: "Server error" });
   }
 });
 
@@ -113,18 +104,14 @@ router.put("/:id", async (req, res) => {
   let dbVitals = vitals || {};
   if (age) dbVitals.age = age;
   if (dentist_id) dbVitals.dentist_id = dentist_id;
-  
   const dbVitalsString = JSON.stringify(dbVitals);
   
-  // LOGIC: Only update xrays if it's sent in the body. If undefined, keep existing.
   let dbXraysString = null;
   if (xrays !== undefined) {
       dbXraysString = JSON.stringify(xrays);
-      console.log(`[Update Patient] Updating X-rays for ID ${id}. Count: ${xrays.length}`);
   }
 
   try {
-    // If xrays is provided, we update it. If not, we don't touch the column to avoid overwriting with null.
     if (dbXraysString !== null) {
         await db.query(
             `UPDATE patients 
@@ -142,11 +129,7 @@ router.put("/:id", async (req, res) => {
     }
 
     const [rows] = await db.query("SELECT * FROM patients WHERE id = ?", [id]);
-    const updatedPatient = rows[0];
-    updatedPatient.xrays = updatedPatient.xrays ? JSON.parse(updatedPatient.xrays) : [];
-    updatedPatient.vitals = typeof updatedPatient.vitals === 'string' ? JSON.parse(updatedPatient.vitals) : (updatedPatient.vitals || {});
-    
-    res.json(updatedPatient);
+    res.json(rows[0]);
   } catch (error) {
     console.error("Error updating patient:", error);
     res.status(500).json({ message: "Database error while updating patient" });

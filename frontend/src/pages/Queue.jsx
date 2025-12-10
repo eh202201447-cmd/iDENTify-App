@@ -27,8 +27,10 @@ function Queue() {
   const [itemToDelete, setItemToDelete] = useState(null);
   const [draggingId, setDraggingId] = useState(null);
 
+  // NEW: State for "Show Completed" toggle
+  const [showCompleted, setShowCompleted] = useState(false);
+
   useEffect(() => {
-    // Added loadPatients() to ensure we have the full patient list for name lookup
     const loadData = async () => {
       try {
         await Promise.all([
@@ -41,11 +43,10 @@ function Queue() {
       }
     };
     loadData();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleAddWalkIn = async (patientData) => {
     try {
-      // 1. Create Patient
       const patientPayload = {
         full_name: patientData.full_name,
         gender: patientData.sex,
@@ -59,7 +60,6 @@ function Queue() {
 
       if (!patientId) throw new Error("Failed to create patient ID");
 
-      // 2. Add to Queue
       const dentistObj = dentists.find(d => d.name === patientData.assignedDentist);
 
       await api.addQueue({
@@ -86,14 +86,13 @@ function Queue() {
   };
 
   const handleAction = (queueItem) => {
-    // Find the full patient object to pass to the form
     const fullPatientData = patients.find(p => p.id === queueItem.patient_id);
 
     navigate(`/app/patient/${queueItem.patient_id}/`, {
       state: {
         dentistId: queueItem.dentist_id,
         status: queueItem.status,
-        patientData: fullPatientData // Explicitly passing patient data
+        patientData: fullPatientData
       }
     });
   };
@@ -101,6 +100,10 @@ function Queue() {
   const handleStatusChange = async (id, status) => {
     try {
       await api.updateQueue(id, { status });
+      // Notify user if patient disappears from list
+      if (status === "Done" && !showCompleted) {
+        toast.success("Patient marked as Done (hidden from queue).");
+      }
     } catch (err) {
       console.error('Failed to update queue status', err);
       toast.error('Failed to update status');
@@ -143,9 +146,12 @@ function Queue() {
   const queueWithDetails = useMemo(
     () =>
       queue
-        .filter((item) => item.status !== "Done")
+        .filter((item) => {
+          // FIX: If 'showCompleted' is true, show everyone. Otherwise hide 'Done'.
+          if (showCompleted) return true;
+          return item.status !== "Done";
+        })
         .map((item, index) => {
-          // Robust name lookup: Try store first, then fallback to queue item's joined name
           const patient = patients.find((p) => p.id === item.patient_id);
           const patientName = patient ? (patient.name || patient.full_name) : (item.full_name || "Unknown");
 
@@ -160,14 +166,25 @@ function Queue() {
             waitingTime: calculateWaitingTime(index, dentistName),
           };
         }),
-    [queue, patients, dentists]
+    [queue, patients, dentists, showCompleted]
   );
 
   return (
     <div className="queue-page">
       <div className="queue-header">
         <h2 className="queue-title">Queue List</h2>
-        <div className="queue-actions">
+        <div className="queue-actions" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+
+          {/* NEW TOGGLE for showing history */}
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.9rem', fontWeight: 600 }}>
+            <input
+              type="checkbox"
+              checked={showCompleted}
+              onChange={(e) => setShowCompleted(e.target.checked)}
+            />
+            Show Completed
+          </label>
+
           <button className="add-walk-in-btn" onClick={() => setIsModalOpen(true)}>
             Add Walk-In Patient
           </button>
@@ -224,6 +241,7 @@ function Queue() {
                   onDragStart={() => handleDragStart(q.id)}
                   onDragOver={handleDragOver}
                   onDrop={() => handleDrop(q.id)}
+                  style={{ opacity: q.status === 'Done' ? 0.6 : 1 }}
                 >
                   <td className="drag-handle">⋮⋮</td>
                   <td>{q.number.toString().padStart(2, "0")}</td>
@@ -251,7 +269,14 @@ function Queue() {
                     <div className="staff-note">{q.notes || '-'}</div>
                   </td>
                   <td>
-                    <button className="action-btn" onClick={() => handleAction(q)}>
+                    {/* MODIFIED START BUTTON: Disabled if Cancelled */}
+                    <button
+                      className="action-btn"
+                      onClick={() => handleAction(q)}
+                      disabled={q.status === "Cancelled"}
+                      style={q.status === "Cancelled" ? { backgroundColor: '#9ca3af', cursor: 'not-allowed' } : {}}
+                      title={q.status === "Cancelled" ? "Cannot start cancelled appointment" : "Start Treatment"}
+                    >
                       Start
                     </button>
                     <button

@@ -21,6 +21,23 @@
   min-width: 300px;
 }
 
+/* FIXED: Added missing button style so it doesn't disappear */
+.quick-action-btn {
+  background-color: #0ea5e9;
+  color: white;
+  border: none;
+  padding: 0.8rem 1.2rem;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.quick-action-btn:hover {
+  background-color: #0284c7;
+}
+
 .appointments-filters {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -132,56 +149,6 @@
   border-radius: 20px;
   font-weight: bold;
   font-size: 0.8rem;
-}
-
-.badge-checked-in {
-  background-color: #e7f5ff;
-  color: #1c7ed6;
-}
-
-.badge-waiting {
-  background-color: #fff9db;
-  color: #f59f00;
-}
-
-.badge-on-chair {
-  background-color: #e6fcf5;
-  color: #2f9e44;
-}
-
-.badge-treatment {
-  background-color: #dbe4ff;
-  color: #4c6ef5;
-}
-
-.badge-for-x-ray {
-  background-color: #ffe3e3;
-  color: #c92a2a;
-}
-
-.badge-returning-from-x-ray {
-  background-color: #f3f0ff;
-  color: #7048e8;
-}
-
-.badge-payment-billing {
-  background-color: #e1f5fe;
-  color: #03a9f4;
-}
-
-.badge-done {
-  background-color: #d4edda;
-  color: #28a745;
-}
-
-.badge-no-show {
-  background-color: #f8f9fa;
-  color: #495057;
-}
-
-.badge-cancelled {
-  background-color: #dee2e6;
-  color: #6c757d;
 }
 
 .badge-neutral {

@@ -7,6 +7,7 @@ import MedicalAlertBanner from "../components/MedicalAlertBanner";
 import useApi from "../hooks/useApi";
 import useAppStore from "../store/useAppStore";
 import toast from "react-hot-toast";
+import { dentalServices } from "../data/services";
 
 function PatientForm() {
   const navigate = useNavigate();
@@ -70,11 +71,19 @@ function PatientForm() {
   const [isXrayViewerOpen, setIsXrayViewerOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Form States
-  const [timelineForm, setTimelineForm] = useState({ start_time: "", end_time: "", provider: "", procedure_text: "", notes: "" });
+  // Form States - Timeline
+  const [timelineForm, setTimelineForm] = useState({ start_time: "", end_time: "", provider: "", notes: "" });
+
+  // Multi-Select for Timeline Procedure
+  const [selectedTimelineServices, setSelectedTimelineServices] = useState([]);
+  const [currentTimelineService, setCurrentTimelineService] = useState("");
+
   const [medicationForm, setMedicationForm] = useState({ medicine: "", dosage: "", frequency: "", notes: "" });
-  const [uploadedFiles, setUploadedFiles] = useState([]); // Array of { name, url (base64) }
+  const [uploadedFiles, setUploadedFiles] = useState([]);
   const [vitals, setVitals] = useState({ bp: "", pulse: "", temp: "" });
+
+  // NEW: Local state for temperature unit (defaults to Celsius)
+  const [tempUnit, setTempUnit] = useState("C");
 
   useEffect(() => {
     const loadData = async () => {
@@ -97,22 +106,26 @@ function PatientForm() {
           ...patientData,
           medicalAlerts: alerts,
           vitals: patientData.vitals || {},
-          xrays: patientData.xrays || [] // Ensure xrays loaded
+          xrays: patientData.xrays || []
         };
 
         fullPatientData.displayAge = getDisplayAge(fullPatientData);
         setPatient(fullPatientData);
 
-        // Populate local state with DB xrays so we don't overwrite/lose them
         if (fullPatientData.xrays && Array.isArray(fullPatientData.xrays)) {
           setUploadedFiles(fullPatientData.xrays);
         }
 
         if (fullPatientData.vitals) {
           setVitals(prev => ({ ...prev, ...fullPatientData.vitals }));
+          // Detect unit from loaded data
+          if (fullPatientData.vitals.temp && fullPatientData.vitals.temp.includes("F")) {
+            setTempUnit("F");
+          } else {
+            setTempUnit("C");
+          }
         }
 
-        // AUTO dentist assignment
         setSelectedDentistId(prevId => {
           if (prevId) return prevId;
           if (fullPatientData.vitals?.dentist_id) return fullPatientData.vitals.dentist_id;
@@ -123,7 +136,6 @@ function PatientForm() {
           return "";
         });
 
-        // Load tooth/timeline/meds...
         const conditions = await api.getToothConditions(id);
         const newBoxMarks = Array(64).fill("");
         const newCircleShades = Array(52).fill(false);
@@ -159,7 +171,48 @@ function PatientForm() {
 
   const updateVitals = (field, value) => setVitals(prev => ({ ...prev, [field]: value }));
 
-  // Helper to convert file to Base64 so we can store in DB (JSON field)
+  // --- TEMPERATURE HANDLERS ---
+  const handleTempNumberChange = (val) => {
+    updateVitals("temp", val ? `${val} °${tempUnit}` : "");
+  };
+
+  const handleUnitToggle = (newUnit) => {
+    const currentValStr = vitals.temp || "";
+    // Extract numeric part
+    const match = currentValStr.match(/[\d.]+/);
+
+    if (!match) {
+      // No number yet, just switch preference
+      setTempUnit(newUnit);
+      return;
+    }
+
+    let val = parseFloat(match[0]);
+    if (isNaN(val)) {
+      setTempUnit(newUnit);
+      return;
+    }
+
+    // Perform conversion
+    if (tempUnit === "C" && newUnit === "F") {
+      val = (val * 9 / 5) + 32;
+    } else if (tempUnit === "F" && newUnit === "C") {
+      val = (val - 32) * 5 / 9;
+    }
+
+    // Round to 1 decimal
+    val = Math.round(val * 10) / 10;
+
+    setTempUnit(newUnit);
+    updateVitals("temp", `${val} °${newUnit}`);
+  };
+
+  const getTempNumericValue = () => {
+    const match = (vitals.temp || "").toString().match(/[\d.]+/);
+    return match ? match[0] : "";
+  };
+  // -----------------------------
+
   const convertToBase64 = (file) => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -178,7 +231,7 @@ function PatientForm() {
         const base64 = await convertToBase64(file);
         newFiles.push({
           name: file.name,
-          url: base64, // Use base64 string
+          url: base64,
         });
       } catch (e) {
         console.error("Error converting file:", file.name, e);
@@ -189,32 +242,27 @@ function PatientForm() {
     setUploadedFiles((prev) => [...prev, ...newFiles]);
   };
 
-  // --- SAVE FUNCTION ---
   const handleSaveAll = async () => {
     if (!patient) return;
     setIsSaving(true);
     try {
-      // Prepare payload with Vitals and Xrays
       const payload = {
         ...patient,
         vitals: {
           ...vitals,
-          dentist_id: selectedDentistId // Also save assigned dentist
+          dentist_id: selectedDentistId
         },
         xrays: uploadedFiles,
         contact_number: patient.contact_number,
-        // map legacy fields if necessary
         contact: patient.contact_number
       };
 
-      console.log("Saving payload size approx:", JSON.stringify(payload).length);
       await api.updatePatient(patient.id, payload);
       toast.success("Patient details, vitals, and images saved!");
     } catch (error) {
       console.error("Error saving patient:", error);
-      // More specific error message for the user
       if (error.message && error.message.includes("413")) {
-        toast.error("Error: Images are too large for the server. Please upload smaller images or ask admin to increase server limit.");
+        toast.error("Error: Images are too large. Please upload smaller images.");
       } else {
         toast.error("Failed to save changes.");
       }
@@ -223,14 +271,30 @@ function PatientForm() {
     }
   };
 
-  // --- DONE FUNCTION ---
   const handleDone = async () => {
     if (!patient) return;
     await handleSaveAll();
+
+    try {
+      const queueItem = queue.find(q => String(q.patient_id) === String(id) && q.status !== "Done");
+      if (queueItem) {
+        await api.updateQueue(queueItem.id, { status: "Done" });
+        toast.success("Visit marked as Done");
+      }
+
+      const appointment = appointments.find(a => String(a.patient_id) === String(id) && a.status !== "Done");
+      if (appointment) {
+        await api.updateAppointment(appointment.id, { status: "Done" });
+      }
+
+    } catch (error) {
+      console.error("Error closing visit:", error);
+      toast.error("Saved patient, but failed to update status to Done.");
+    }
+
     navigate("/app/queue");
   };
 
-  // Tooth Logic
   const setCellStatus = (cellKey) => {
     if (!cellKey) return;
     const newStatus = { ...toothStatuses, [cellKey]: activeStatus };
@@ -246,17 +310,36 @@ function PatientForm() {
     });
   };
 
-  // ... (Timeline/Medication Logic remains same) ...
   const updateTimelineForm = (field, value) => setTimelineForm((prev) => ({ ...prev, [field]: value }));
+
+  const handleAddTimelineService = () => {
+    if (!currentTimelineService) return;
+    if (selectedTimelineServices.includes(currentTimelineService)) return;
+    setSelectedTimelineServices([...selectedTimelineServices, currentTimelineService]);
+    setCurrentTimelineService("");
+  };
+
+  const handleRemoveTimelineService = (svc) => {
+    setSelectedTimelineServices(selectedTimelineServices.filter(s => s !== svc));
+  };
+
   const addTimelineEntry = async () => {
-    if (!timelineForm.procedure_text) return;
+    if (selectedTimelineServices.length === 0) {
+      toast.error("Please add at least one procedure.");
+      return;
+    }
+
     let providerName = timelineForm.provider;
     if (!providerName && selectedDentistId) {
       const d = dentists.find(dentist => dentist.id === Number(selectedDentistId));
       if (d) providerName = d.name;
     }
+
+    const procedureString = selectedTimelineServices.join(", ");
+
     const payload = {
       ...timelineForm,
+      procedure_text: procedureString,
       patient_id: id,
       provider: providerName,
       start_time: timelineForm.start_time || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -264,9 +347,11 @@ function PatientForm() {
     try {
       const newEntry = await api.addTreatmentTimelineEntry(payload);
       setTimelineEntries(prev => [...prev, newEntry]);
-      setTimelineForm({ start_time: "", end_time: "", provider: "", procedure_text: "", notes: "" });
+      setTimelineForm({ start_time: "", end_time: "", provider: "", notes: "" });
+      setSelectedTimelineServices([]);
     } catch (error) { console.error("Failed to add timeline entry", error); }
   };
+
   const deleteTimelineEntry = async (entryId) => {
     try { await api.deleteTreatmentTimelineEntry(entryId); setTimelineEntries(prev => prev.filter(entry => entry.id !== entryId)); } catch (error) { console.error("Failed to delete timeline entry", error); }
   };
@@ -279,7 +364,6 @@ function PatientForm() {
     try { await api.deleteMedication(medId); setMedications(prev => prev.filter(m => m.id !== medId)); } catch (error) { console.error("Failed to delete medication", error); }
   };
 
-  // ... (Tooth rendering logic remains same) ...
   const getBoxKind = (idx) => {
     const row = Math.floor(idx / 16);
     if (row === 0 || row === 3) return "treatment";
@@ -373,17 +457,8 @@ function PatientForm() {
       <div className="content-card patient-form-card">
         <MedicalAlertBanner alerts={patient.medicalAlerts || []} />
 
-        {/* HEADER */}
         <div className="form-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h2 className="patients-header">Patient Chart: {patient.full_name}</h2>
-          <div style={{ display: 'flex', gap: '10px' }}>
-            <button className="done-btn secondary" onClick={handleSaveAll} disabled={isSaving}>
-              {isSaving ? "Saving..." : "Save Changes"}
-            </button>
-            <button className="done-btn" onClick={handleDone} disabled={isSaving}>
-              {isSaving ? "Saving..." : "Done"}
-            </button>
-          </div>
         </div>
 
         <div className="sections-container">
@@ -412,9 +487,34 @@ function PatientForm() {
                   <div className="vital-field"><label>Blood Pressure</label><input className="pill-input-input" placeholder="120/80" value={vitals.bp || ""} onChange={(e) => updateVitals("bp", e.target.value)} /></div>
                   <div className="vital-field"><label>Pulse Rate</label><input className="pill-input-input" placeholder="72 bpm" value={vitals.pulse || ""} onChange={(e) => updateVitals("pulse", e.target.value)} /></div>
                 </div>
+
+                {/* IMPROVED TEMPERATURE FIELD */}
                 <div className="vital-row">
-                  <div className="vital-field"><label>Temperature</label><input className="pill-input-input" placeholder="36.8 °C" value={vitals.temp || ""} onChange={(e) => updateVitals("temp", e.target.value)} /></div>
+                  <div className="vital-field">
+                    <label>Temperature</label>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <input
+                        type="number"
+                        step="0.1"
+                        className="pill-input-input"
+                        placeholder="36.5"
+                        value={getTempNumericValue()}
+                        onChange={(e) => handleTempNumberChange(e.target.value)}
+                        style={{ flex: 1 }}
+                      />
+                      <select
+                        className="pill-input-input"
+                        style={{ width: '70px', textAlign: 'center' }}
+                        value={tempUnit}
+                        onChange={(e) => handleUnitToggle(e.target.value)}
+                      >
+                        <option value="C">°C</option>
+                        <option value="F">°F</option>
+                      </select>
+                    </div>
+                  </div>
                 </div>
+
               </div>
             </div>
           </section>
@@ -428,14 +528,43 @@ function PatientForm() {
 
         <section className="timeline-section">
           <h3 className="section-title">Treatment Timeline</h3>
+
+          {/* MULTI-SELECT TIMELINE ENTRY */}
           <div className="timeline-form">
             <input className="pill-input-input" placeholder="Start (e.g. 09:00)" value={timelineForm.start_time} onChange={(e) => updateTimelineForm("start_time", e.target.value)} />
             <input className="pill-input-input" placeholder="End (e.g. 09:30)" value={timelineForm.end_time} onChange={(e) => updateTimelineForm("end_time", e.target.value)} />
             <input className="pill-input-input" placeholder="Updated by" value={timelineForm.provider} onChange={(e) => updateTimelineForm("provider", e.target.value)} />
-            <input className="pill-input-input" placeholder="Procedure" value={timelineForm.procedure_text} onChange={(e) => updateTimelineForm("procedure_text", e.target.value)} />
             <input className="pill-input-input" placeholder="Notes" value={timelineForm.notes} onChange={(e) => updateTimelineForm("notes", e.target.value)} />
+
+            {/* Procedure Dropdown with Chips */}
+            <div style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <select
+                  className="pill-input-input"
+                  value={currentTimelineService}
+                  onChange={(e) => setCurrentTimelineService(e.target.value)}
+                  style={{ flex: 1 }}
+                >
+                  <option value="">Select Procedure...</option>
+                  {dentalServices.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+                <button onClick={handleAddTimelineService} className="small-btn" style={{ width: 'auto' }}>+ Add</button>
+              </div>
+
+              {/* Chips */}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
+                {selectedTimelineServices.map(svc => (
+                  <span key={svc} style={{ background: '#e0f2fe', color: '#0369a1', padding: '4px 8px', borderRadius: '12px', fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                    {svc}
+                    <button onClick={() => handleRemoveTimelineService(svc)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'inherit', fontWeight: 'bold' }}>×</button>
+                  </span>
+                ))}
+              </div>
+            </div>
+
             <button className="small-btn" onClick={addTimelineEntry}>Add Entry</button>
           </div>
+
           <div className="timeline-list">
             {timelineEntries.map((entry) => (
               <div key={entry.id} className="timeline-entry">
@@ -478,6 +607,15 @@ function PatientForm() {
             ))}
           </div>
         </section>
+
+        <div className="form-actions-bottom" style={{ marginTop: '2rem', display: 'flex', justifyContent: 'flex-end', gap: '1rem', borderTop: '1px solid #e9ecef', paddingTop: '1rem' }}>
+          <button className="done-btn secondary" onClick={handleSaveAll} disabled={isSaving}>
+            {isSaving ? "Saving..." : "Save Changes"}
+          </button>
+          <button className="done-btn" onClick={handleDone} disabled={isSaving}>
+            {isSaving ? "Saving..." : "Done"}
+          </button>
+        </div>
 
         <div className={`side-panel-backdrop${isPanelOpen ? " side-panel-open" : ""}`} onClick={closePanel}>
           <div className="side-panel" onClick={(e) => e.stopPropagation()}>

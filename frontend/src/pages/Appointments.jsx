@@ -47,9 +47,10 @@ function Appointments() {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [selectedAppointment, setSelectedAppointment] = useState(null);
+
   const [filters, setFilters] = useState({
     dentist: "all",
-    status: "all",
+    status: "Scheduled",
     procedure: "all",
     time: "all",
   });
@@ -60,50 +61,68 @@ function Appointments() {
   );
 
   const handleStartAppointment = async (appointment) => {
-    const isInQueue = appointment.patient_id
-      ? queue.some((p) => p.patient_id === appointment.patient_id)
-      : queue.some((p) => p.full_name === appointment.patient);
+    let patientId = appointment.patient_id;
+    let fullPatientData = null;
 
-    if (isInQueue) {
-      toast.error("Patient is already in the queue.");
+    if (patientId) {
+      fullPatientData = patients.find((p) => p.id === patientId);
+    } else {
+      fullPatientData = patients.find((p) => p.name === appointment.patient);
+      patientId = fullPatientData ? fullPatientData.id : null;
+    }
+
+    if (!patientId) {
+      toast.error("Error: Could not find linked patient profile.");
       return;
     }
 
-    let patientId = appointment.patient_id;
-    if (!patientId) {
-      const patient = patients.find((p) => p.name === appointment.patient);
-      patientId = patient ? patient.id : null;
-    }
+    const isAlreadyInQueue = queue.some((p) => String(p.patient_id) === String(patientId));
 
-    if (!patientId) {
-      toast.error("Could not find patient ID. Ensure patient is registered.");
+    if (isAlreadyInQueue && appointment.status !== 'Checked-In') {
+      toast.error("Patient is already in the queue.");
       return;
     }
 
     try {
       await api.updateAppointment(appointment.id, { status: 'Checked-In' });
-      await api.addQueue({
-        patient_id: patientId,
-        dentist_id: appointment.dentist_id || dentists.find((d) => d.name === appointment.dentist)?.id,
-        appointment_id: appointment.id,
-        source: "appointment",
-        status: "Checked-In",
-        notes: appointment.procedure || appointment.reason,
-        checkedInTime: new Date().toISOString(),
+
+      if (!isAlreadyInQueue) {
+        await api.addQueue({
+          patient_id: patientId,
+          dentist_id: appointment.dentist_id || dentists.find((d) => d.name === appointment.dentist)?.id,
+          appointment_id: appointment.id,
+          source: "appointment",
+          status: "Checked-In",
+          notes: appointment.procedure || appointment.reason,
+          checkedInTime: new Date().toISOString(),
+        });
+        toast.success("Patient added to queue.");
+      }
+
+      navigate(`/app/patient/${patientId}`, {
+        state: {
+          patientData: fullPatientData,
+          dentistId: appointment.dentist_id
+        }
       });
-      toast.success("Patient added to queue.");
-      navigate(`/app/patient/${patientId}`);
+
     } catch (err) {
       console.error('Failed to start appointment', err);
-      toast.error('Failed to update status');
+      toast.error('Failed to start appointment. Check console.');
     }
   };
 
+  // --- UPDATED CONFLICT LOGIC ---
   const conflicts = useMemo(() => {
     const dentistMap = new Map();
 
     appointments.forEach((appt) => {
       if (!appt.timeStart || !appt.timeEnd) return;
+
+      // FIX: Ignore appointments that are Done, Cancelled, or No-Show
+      const status = (appt.status || "").toLowerCase().trim();
+      if (["done", "cancelled", "no-show"].includes(status)) return;
+
       const start = toMinutes(appt.timeStart);
       const end = toMinutes(appt.timeEnd);
       const dentistName = dentists.find(d => d.id === appt.dentist_id)?.name || appt.dentist || "Unassigned";
@@ -155,8 +174,10 @@ function Appointments() {
 
       const dentistMatch =
         filters.dentist === "all" || dentistName === filters.dentist;
+
       const statusMatch =
-        filters.status === "all" || appt.status === filters.status;
+        filters.status === "all" ? true : appt.status === filters.status;
+
       const procedureMatch =
         filters.procedure === "all" || proc === filters.procedure;
 
@@ -209,30 +230,19 @@ function Appointments() {
   const handleSaveAppointment = async (updatedAppointment) => {
     if (!updatedAppointment) return;
     try {
-      // 1. CRITICAL: Update Patient Record if name/age/contact/sex changed
-      // This ensures the name sticks and doesn't "disappear" or revert
       const patient = patients.find(p => p.id === updatedAppointment.patient_id);
       if (patient) {
         const updates = {};
-
-        // Name Change
         if (updatedAppointment.patient_name && updatedAppointment.patient_name !== patient.name) {
           updates.full_name = updatedAppointment.patient_name;
         }
-
-        // Contact Change
         if (updatedAppointment.contact_number && updatedAppointment.contact_number !== patient.contact) {
           updates.contact_number = updatedAppointment.contact_number;
         }
-
-        // Age Change (store in vitals or age field if available)
         if (updatedAppointment.age && updatedAppointment.age !== patient.age) {
           updates.age = updatedAppointment.age;
-          // Also update vitals object for consistency
           updates.vitals = { ...(patient.vitals || {}), age: updatedAppointment.age };
         }
-
-        // Sex Change
         if (updatedAppointment.sex && updatedAppointment.sex !== patient.sex) {
           updates.gender = updatedAppointment.sex;
         }
@@ -242,7 +252,6 @@ function Appointments() {
         }
       }
 
-      // 2. Update Appointment Record
       await api.updateAppointment(updatedAppointment.id, updatedAppointment);
 
       toast.success("Appointment updated");
@@ -268,12 +277,10 @@ function Appointments() {
   const handleAddAppointment = async (appointmentData) => {
     try {
       let patientId;
-      // Check existing patient by Name
       const existingPatient = patients.find(p => p.name?.toLowerCase() === appointmentData.patient_name?.toLowerCase());
 
       if (existingPatient) {
         patientId = existingPatient.id;
-        // Optionally backfill missing info on existing patient
         const updates = {};
         if (appointmentData.contact_number && !existingPatient.contact) updates.contact_number = appointmentData.contact_number;
         if (appointmentData.sex && !existingPatient.sex) updates.gender = appointmentData.sex;
@@ -286,7 +293,6 @@ function Appointments() {
           await api.updatePatient(patientId, updates);
         }
       } else {
-        // Create NEW patient with ALL fields (Age, Sex, Contact)
         const newPatient = await api.createPatient({
           full_name: appointmentData.patient_name,
           contact_number: appointmentData.contact_number,
@@ -302,7 +308,6 @@ function Appointments() {
         patient_id: patientId,
       };
 
-      // Remove fields not belonging to appointment table
       delete appointmentToCreate.patient_name;
       delete appointmentToCreate.contact_number;
       delete appointmentToCreate.age;
@@ -321,7 +326,6 @@ function Appointments() {
     toast("Please edit the appointment time to resolve the conflict.");
   };
 
-  // Helper functions to populate modal with existing patient data
   const getSelectedPatientData = (field) => {
     if (!selectedAppointment) return "";
     const p = patients.find((p) => p.id === selectedAppointment.patient_id);
@@ -423,12 +427,15 @@ function Appointments() {
       {conflicts.length > 0 && (
         <div className="conflict-alert">
           <div className="conflict-icon">⚠️</div>
-          <div>
+          <div style={{ flex: 1 }}>
             <p className="conflict-title">Overlapping appointments detected:</p>
-            <ul>
+            <ul style={{ paddingLeft: '1rem', marginTop: '0.5rem' }}>
               {conflicts.map((conflict) => (
-                <li key={conflict.id}>
-                  {conflict.message}
+                <li
+                  key={conflict.id}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}
+                >
+                  <span>{conflict.message}</span>
                   <button
                     onClick={handleReschedule}
                     className="reschedule-btn"
@@ -457,66 +464,70 @@ function Appointments() {
             </tr>
           </thead>
           <tbody>
-            {filteredAppointments.map((a) => (
-              <tr key={a.id}>
-                <td className="time-cell">
-                  <div>{a.timeStart}</div>
-                  <span className="time-end">{a.timeEnd}</span>
-                </td>
-                <td>{patients.find((p) => p.id === a.patient_id)?.name || a.patient}</td>
-                <td>{dentists.find((d) => d.id === a.dentist_id)?.name || a.dentist}</td>
-                <td>
-                  <span className="badge badge-neutral">{a.procedure || a.reason}</span>
-                </td>
-                <td>
-                  <StatusBadge status={a.status} />
-                </td>
-                <td>
-                  <div className="notes-pill">{a.notes}</div>
-                </td>
-                <td className="contact-cell">
-                  <button
-                    type="button"
-                    className="contact-button"
-                    aria-label={`View contact for ${a.patient}`}
-                    onClick={() =>
-                      setActiveContactId((prev) =>
-                        prev === a.id ? null : a.id
-                      )
-                    }
-                  >
-                    📇
-                  </button>
-                  {activeContactId === a.id && (
-                    <div className="contact-popover">
-                      <p>
-                        <strong>Phone:</strong> {patients.find((p) => p.id === a.patient_id)?.contact || a.contact?.phone || ''}
-                      </p>
-                      <p>
-                        <strong>Email:</strong> {patients.find((p) => p.id === a.patient_id)?.email || a.contact?.email || ''}
-                      </p>
-                      <p>
-                        <strong>Birthday:</strong> {patients.find((p) => p.id === a.patient_id)?.birthday || a.contact?.birthday || ''}
-                      </p>
-                      <p>
-                        <strong>Address:</strong> {patients.find((p) => p.id === a.patient_id)?.address || a.contact?.address || ''}
-                      </p>
-                    </div>
-                  )}
-                </td>
-                <td>
-                  <button className="edit-btn" onClick={() => handleEdit(a)}>Edit</button>
-                  <button
-                    className="start-btn"
-                    onClick={() => handleStartAppointment(a)}
-                    disabled={a.status !== "Scheduled"}
-                  >
-                    Start
-                  </button>
-                  <button className="delete-btn" onClick={() => handleDelete(a)}>Delete</button>
-                </td>
-              </tr>
-            ))}
+            {filteredAppointments.length === 0 ? (
+              <tr><td colSpan="8" style={{ textAlign: "center", padding: "2rem" }}>No appointments found for this filter.</td></tr>
+            ) : (
+              filteredAppointments.map((a) => {
+                const s = (a.status || "").toLowerCase().trim();
+                const canStart = s === "scheduled" || s === "checked-in";
+
+                return (
+                  <tr key={a.id}>
+                    <td className="time-cell">
+                      <div>{a.timeStart}</div>
+                      <span className="time-end">{a.timeEnd}</span>
+                    </td>
+                    <td>{patients.find((p) => p.id === a.patient_id)?.name || a.patient}</td>
+                    <td>{dentists.find((d) => d.id === a.dentist_id)?.name || a.dentist}</td>
+                    <td>
+                      <span className="badge badge-neutral">{a.procedure || a.reason}</span>
+                    </td>
+                    <td>
+                      <StatusBadge status={a.status} />
+                    </td>
+                    <td>
+                      <div className="notes-pill">{a.notes}</div>
+                    </td>
+                    <td className="contact-cell">
+                      <button
+                        type="button"
+                        className="contact-button"
+                        aria-label={`View contact for ${a.patient}`}
+                        onClick={() =>
+                          setActiveContactId((prev) =>
+                            prev === a.id ? null : a.id
+                          )
+                        }
+                      >
+                        📇
+                      </button>
+                      {activeContactId === a.id && (
+                        <div className="contact-popover">
+                          <p>
+                            <strong>Phone:</strong> {patients.find((p) => p.id === a.patient_id)?.contact || a.contact?.phone || ''}
+                          </p>
+                          <p>
+                            <strong>Email:</strong> {patients.find((p) => p.id === a.patient_id)?.email || a.contact?.email || ''}
+                          </p>
+                        </div>
+                      )}
+                    </td>
+                    <td>
+                      <button className="edit-btn" onClick={() => handleEdit(a)}>Edit</button>
+                      <button
+                        className="start-btn"
+                        onClick={() => handleStartAppointment(a)}
+                        disabled={!canStart}
+                        title={!canStart ? "Status must be Scheduled or Checked-In" : "Start Appointment"}
+                      >
+                        Start
+                      </button>
+                      <button className="delete-btn" onClick={() => handleDelete(a)}>Delete</button>
+                    </td>
+                  </tr>
+                );
+              })
+            )}
           </tbody>
         </table>
       </div>

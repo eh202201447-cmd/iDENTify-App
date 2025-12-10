@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import toast from 'react-hot-toast';
 import useAppStore from '../store/useAppStore';
 import '../styles/components/AddWalkInModal.css';
+import { dentalServices } from "../data/services";
 
 const AddWalkInModal = ({ isOpen, onClose, onAddPatient }) => {
   const dentists = useAppStore((state) => state.dentists);
@@ -9,9 +10,12 @@ const AddWalkInModal = ({ isOpen, onClose, onAddPatient }) => {
   const [age, setAge] = useState('');
   const [sex, setSex] = useState('');
   const [contact, setContact] = useState('');
-  const [reason, setReason] = useState('');
   const [dentistName, setDentistName] = useState('');
   const [dentistId, setDentistId] = useState('');
+
+  // Multi-select state
+  const [selectedServices, setSelectedServices] = useState([]);
+  const [currentService, setCurrentService] = useState("");
 
   const handleDentistChange = (e) => {
     const selectedId = e.target.value;
@@ -20,33 +24,51 @@ const AddWalkInModal = ({ isOpen, onClose, onAddPatient }) => {
     setDentistName(selectedDentist ? selectedDentist.name : '');
   };
 
+  const handleAddService = () => {
+    if (!currentService) return;
+    if (selectedServices.includes(currentService)) {
+      toast.error("Service already selected");
+      return;
+    }
+    setSelectedServices([...selectedServices, currentService]);
+    setCurrentService("");
+  };
+
+  const handleRemoveService = (serviceToRemove) => {
+    setSelectedServices(selectedServices.filter(s => s !== serviceToRemove));
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!full_name.trim() || !reason.trim()) {
-      toast.error('Name and Reason for Visit are required.');
+    if (!full_name.trim()) {
+      toast.error('Name is required.');
+      return;
+    }
+    if (selectedServices.length === 0) {
+      toast.error('Please select at least one Reason for Visit.');
       return;
     }
 
-    // Pass everything needed
+    const reasonString = selectedServices.join(", ");
+
     onAddPatient({
       full_name,
       age,
       sex,
       contact,
-      notes: reason,
+      notes: reasonString, // Storing multiple services in notes/reason field
       assignedDentist: dentistName,
-      assignedDentistId: dentistId, // Pass ID for DB linking
+      assignedDentistId: dentistId,
       source: 'walk-in',
       status: 'Checked-In',
       time: new Date().toLocaleTimeString(),
     });
 
-    // Reset form
     setFullName('');
     setAge('');
     setSex('');
     setContact('');
-    setReason('');
+    setSelectedServices([]);
     setDentistName('');
     setDentistId('');
     onClose();
@@ -69,7 +91,7 @@ const AddWalkInModal = ({ isOpen, onClose, onAddPatient }) => {
           </div>
           <div className="form-group">
             <label>Sex</label>
-            <select value={sex} onChange={(e) => setSex(e.target.value)} style={{ width: '100%', padding: '0.75rem', borderRadius: '4px', border: '1px solid #ccc' }}>
+            <select value={sex} onChange={(e) => setSex(e.target.value)}>
               <option value="">Select Sex</option>
               <option value="Male">Male</option>
               <option value="Female">Female</option>
@@ -79,23 +101,52 @@ const AddWalkInModal = ({ isOpen, onClose, onAddPatient }) => {
             <label>Contact</label>
             <input type="text" value={contact} onChange={(e) => setContact(e.target.value)} />
           </div>
+
+          {/* MULTI-SELECT REASON */}
           <div className="form-group">
-            <label>Reason for Visit *</label>
-            <textarea value={reason} onChange={(e) => setReason(e.target.value)} />
+            <label>Reason for Visit (Service) *</label>
+            <div className="service-input-group">
+              <select
+                value={currentService}
+                onChange={(e) => setCurrentService(e.target.value)}
+              >
+                <option value="">Select a service...</option>
+                {dentalServices.map((service) => (
+                  <option key={service} value={service}>
+                    {service}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="add-service-btn"
+                onClick={handleAddService}
+              >
+                +
+              </button>
+            </div>
+            <div className="selected-services-container">
+              {selectedServices.length === 0 && <span style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: '0.9rem' }}>No services selected</span>}
+              {selectedServices.map((service, index) => (
+                <span key={`${service}-${index}`} className="service-chip">
+                  {service}
+                  <button
+                    type="button"
+                    className="remove-service-btn"
+                    onClick={() => handleRemoveService(service)}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
           </div>
+
           <div className="form-group">
             <label>Assigned Dentist</label>
             <select
               value={dentistId}
               onChange={handleDentistChange}
-              style={{
-                width: '100%',
-                padding: '0.75rem',
-                border: '1px solid #ccc',
-                borderRadius: '4px',
-                backgroundColor: 'white',
-                fontSize: 'inherit'
-              }}
             >
               <option value="">Select Dentist</option>
               {dentists.map((d) => {

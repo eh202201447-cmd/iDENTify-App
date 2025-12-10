@@ -34,7 +34,7 @@ app.use("/api/dentists", dentistsRoutes);
 app.use("/api/treatments", treatmentsRoutes);
 app.use("/api/reports", reportsRoutes);
 
-const PORT = process.env.PORT || 4001;
+const PORT = process.env.PORT || 4006;
 
 // UPDATED: Listen on '0.0.0.0' to accept connections from your network (e.g. your phone)
 // instead of just 'localhost'.

@@ -8,6 +8,7 @@
   display: flex;
   justify-content: center;
   align-items: center;
+  z-index: 1000; /* Ensure high z-index */
 }
 
 .modal {
@@ -35,7 +36,8 @@
 }
 
 .form-group input,
-.form-group textarea {
+.form-group textarea,
+.form-group select {
   width: 100%;
   padding: 0.75rem;
   border: 1px solid #ccc;
@@ -63,4 +65,59 @@
 
 .form-actions button[type="button"] {
   background-color: #f0f0f0;
+}
+
+/* CHIP STYLES FOR WALK-IN MODAL */
+.service-input-group {
+  display: flex;
+  gap: 8px;
+}
+
+.add-service-btn {
+  background-color: #007bff;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  width: 40px;
+  font-size: 1.2rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.selected-services-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 8px;
+  background: #f8fafc;
+  border-radius: 4px;
+  border: 1px solid #ddd;
+  min-height: 40px;
+}
+
+.service-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background-color: #e7f5ff;
+  color: #007bff;
+  padding: 4px 10px;
+  border-radius: 16px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.remove-service-btn {
+  background: none;
+  border: none;
+  color: #007bff;
+  cursor: pointer;
+  font-weight: bold;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0;
+  margin-left: 2px;
 }

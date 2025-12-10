@@ -1,8 +1,10 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import toast from "react-hot-toast";
 import "../styles/components/EditAppointmentModal.css";
+import { dentalServices } from "../data/services";
 
-// Helper to convert "HH:MM AM/PM" -> 24h minutes for comparison
+const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
 function toMinutes(timeString) {
   if (!timeString) return 0;
   const parts = timeString.split(" ");
@@ -16,19 +18,25 @@ function toMinutes(timeString) {
   return hour * 60 + minute;
 }
 
-// Helper to combine a Date object's date portion with a Time string "HH:MM AM"
-function combineDateAndTime(originalDateStr, timeStr) {
-  if (!originalDateStr || !timeStr) return timeStr; // Fallback
+// Parse "09:30 AM" -> 570
+function toMinutes12(timeString) {
+  return toMinutes(timeString);
+}
 
-  // Try to parse the original ISO string from DB (e.g., "2025-12-09T09:00:00.000Z")
+// Parse "09:30" -> 570
+function toMinutes24(timeString) {
+  if (!timeString) return 0;
+  const [hours, minutes] = timeString.split(":").map(Number);
+  return hours * 60 + minutes;
+}
+
+function combineDateAndTime(originalDateStr, timeStr) {
+  if (!originalDateStr || !timeStr) return timeStr;
   const dateObj = new Date(originalDateStr);
   if (isNaN(dateObj.getTime())) return timeStr;
-
   const year = dateObj.getFullYear();
   const month = String(dateObj.getMonth() + 1).padStart(2, '0');
   const day = String(dateObj.getDate()).padStart(2, '0');
-
-  // Return format expected by backend: "YYYY-MM-DD HH:MM AM"
   return `${year}-${month}-${day} ${timeStr}`;
 }
 
@@ -41,7 +49,6 @@ function EditAppointmentModal({ appointment, initialContact, initialAge, initial
     timeEnd: appointment.timeEnd || "",
     dentist_id: appointment.dentist_id || dentists.find((d) => d.name === appointment.dentist)?.id || "",
     dentist: appointment.dentist || dentists.find((d) => d.id === appointment.dentist_id)?.name || "",
-    procedure: appointment.procedure || appointment.reason || "",
     notes: appointment.notes || "",
     contact_number: initialContact || "",
     age: initialAge || "",
@@ -49,7 +56,22 @@ function EditAppointmentModal({ appointment, initialContact, initialAge, initial
     status: appointment.status || "Scheduled"
   });
 
+  const [selectedServices, setSelectedServices] = useState([]);
+  const [currentService, setCurrentService] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+
+  // Selected Dentist Object
+  const selectedDentist = useMemo(() => {
+    return dentists.find(d => String(d.id) === String(formData.dentist_id));
+  }, [dentists, formData.dentist_id]);
+
+  useEffect(() => {
+    const existingProcedure = appointment.procedure || appointment.reason || "";
+    if (existingProcedure) {
+      const items = existingProcedure.split(',').map(s => s.trim()).filter(Boolean);
+      setSelectedServices(items);
+    }
+  }, [appointment]);
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -59,41 +81,110 @@ function EditAppointmentModal({ appointment, initialContact, initialAge, initial
     }));
   };
 
-  const handleSave = () => {
-    if (!formData.patient_name.trim()) {
-      toast.error("Patient name cannot be empty.");
+  const handleAddService = () => {
+    if (!currentService) return;
+    if (selectedServices.includes(currentService)) {
+      toast.error("Service already selected");
       return;
     }
+    setSelectedServices([...selectedServices, currentService]);
+    setCurrentService("");
+  };
 
-    if (formData.timeStart && formData.timeEnd) {
-      if (toMinutes(formData.timeEnd) <= toMinutes(formData.timeStart)) {
-        toast.error("End time cannot be before or equal to start time.");
-        return;
+  const handleRemoveService = (serviceToRemove) => {
+    setSelectedServices(selectedServices.filter(s => s !== serviceToRemove));
+  };
+
+  const validateSchedule = () => {
+    if (!selectedDentist) return null;
+
+    const dateStr = appointment.appointment_datetime
+      ? new Date(appointment.appointment_datetime).toISOString().split('T')[0]
+      : new Date().toISOString().split('T')[0];
+
+    // 1. Status
+    if (selectedDentist.status === "Off") return `Dr. ${selectedDentist.name} is marked as Off.`;
+
+    // 2. Working Days
+    const dayOfWeek = new Date(dateStr).getDay();
+    const worksToday = selectedDentist.days?.includes(dayOfWeek);
+    if (selectedDentist.days && !worksToday) {
+      const workingDays = selectedDentist.days.map(d => DAYS[d]).join(", ");
+      return `Dr. ${selectedDentist.name} does not work on this day (${DAYS[dayOfWeek]}). Available: ${workingDays}`;
+    }
+
+    // 3. Leave
+    if (selectedDentist.leaveDays?.includes(dateStr)) return `Dr. ${selectedDentist.name} is on leave on ${dateStr}.`;
+
+    // 4. Time Logic
+    // Detect format (AM/PM vs 24h) based on string content
+    const is12Hour = formData.timeStart.includes("M"); // AM or PM
+    const startMin = is12Hour ? toMinutes12(formData.timeStart) : toMinutes24(formData.timeStart);
+    const endMin = is12Hour ? toMinutes12(formData.timeEnd) : toMinutes24(formData.timeEnd);
+
+    if (startMin >= endMin) return "End time must be after start time.";
+
+    // Operating Hours
+    if (selectedDentist.operatingHours) {
+      const opStart = toMinutes24(selectedDentist.operatingHours.start);
+      const opEnd = toMinutes24(selectedDentist.operatingHours.end);
+      if (startMin < opStart || endMin > opEnd) {
+        return `Time is outside operating hours (${selectedDentist.operatingHours.start} - ${selectedDentist.operatingHours.end}).`;
       }
     }
 
-    const proc = formData.procedure || "";
-    if (!proc.trim()) {
-      toast.error("Procedure cannot be empty.");
+    const isOverlapping = (s1, e1, s2, e2) => s1 < e2 && e1 > s2;
+
+    // Lunch
+    if (selectedDentist.lunch) {
+      const lStart = toMinutes24(selectedDentist.lunch.start);
+      const lEnd = toMinutes24(selectedDentist.lunch.end);
+      if (isOverlapping(startMin, endMin, lStart, lEnd)) {
+        return `Time overlaps with lunch break (${selectedDentist.lunch.start} - ${selectedDentist.lunch.end}).`;
+      }
+    }
+
+    // Breaks
+    if (selectedDentist.breaks) {
+      for (const brk of selectedDentist.breaks) {
+        const bStart = toMinutes24(brk.start);
+        const bEnd = toMinutes24(brk.end);
+        if (isOverlapping(startMin, endMin, bStart, bEnd)) {
+          return `Time overlaps with scheduled break (${brk.start} - ${brk.end}).`;
+        }
+      }
+    }
+
+    return null;
+  };
+
+  const handleSave = () => {
+    if (!formData.patient_name.trim()) return toast.error("Patient name cannot be empty.");
+    if (selectedServices.length === 0) return toast.error("Please select at least one procedure.");
+
+    // Validate Schedule
+    const conflictError = validateSchedule();
+    if (conflictError) {
+      toast.error(conflictError);
       return;
     }
 
     setIsLoading(true);
 
-    // CRITICAL FIX: Combine the original appointment date with the edited times
-    // The appointment object from DB has 'appointment_datetime'. We use that date.
     const originalDate = appointment.appointment_datetime || new Date().toISOString();
     const fullTimeStart = combineDateAndTime(originalDate, formData.timeStart);
     const fullTimeEnd = combineDateAndTime(originalDate, formData.timeEnd);
-
     const dentistNameFromId = dentists.find((d) => d.id === Number(formData.dentist_id))?.name;
+
+    const procedureString = selectedServices.join(", ");
 
     const updatedData = {
       ...appointment,
       ...formData,
       dentist_id: Number(formData.dentist_id),
       dentist: dentistNameFromId || formData.dentist,
-      timeStart: fullTimeStart, // Send full YYYY-MM-DD HH:MM AM string
+      procedure: procedureString,
+      timeStart: fullTimeStart,
       timeEnd: fullTimeEnd
     };
 
@@ -133,12 +224,7 @@ function EditAppointmentModal({ appointment, initialContact, initialAge, initial
 
           <div className="form-group">
             <label htmlFor="sex">Sex</label>
-            <select
-              id="sex"
-              name="sex"
-              value={formData.sex}
-              onChange={handleChange}
-            >
+            <select id="sex" name="sex" value={formData.sex} onChange={handleChange}>
               <option value="">Select Sex</option>
               <option value="Male">Male</option>
               <option value="Female">Female</option>
@@ -154,29 +240,6 @@ function EditAppointmentModal({ appointment, initialContact, initialAge, initial
               value={formData.contact_number}
               onChange={handleChange}
               placeholder="e.g. 0917..."
-            />
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="timeStart">Time Start</label>
-            <input
-              type="text"
-              id="timeStart"
-              name="timeStart"
-              value={formData.timeStart}
-              onChange={handleChange}
-              placeholder="e.g. 09:00 AM"
-            />
-          </div>
-          <div className="form-group">
-            <label htmlFor="timeEnd">Time End</label>
-            <input
-              type="text"
-              id="timeEnd"
-              name="timeEnd"
-              value={formData.timeEnd}
-              onChange={handleChange}
-              placeholder="e.g. 09:30 AM"
             />
           </div>
 
@@ -203,6 +266,39 @@ function EditAppointmentModal({ appointment, initialContact, initialAge, initial
                 </option>
               ))}
             </select>
+
+            {/* NEW: VISUAL SCHEDULE INFO */}
+            {selectedDentist && (
+              <div style={{ marginTop: '8px', padding: '10px', background: '#f0f9ff', borderRadius: '8px', fontSize: '0.9rem', color: '#0c4a6e', border: '1px solid #bae6fd' }}>
+                <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>Schedule for {selectedDentist.name}:</div>
+                <div>📅 Days: {selectedDentist.days?.map(d => DAYS[d]).join(", ")}</div>
+                <div>⏰ Hours: {selectedDentist.operatingHours?.start} - {selectedDentist.operatingHours?.end}</div>
+                {selectedDentist.lunch && <div>🍽️ Lunch: {selectedDentist.lunch.start} - {selectedDentist.lunch.end}</div>}
+              </div>
+            )}
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="timeStart">Time Start</label>
+            <input
+              type="text"
+              id="timeStart"
+              name="timeStart"
+              value={formData.timeStart}
+              onChange={handleChange}
+              placeholder="e.g. 09:00 AM"
+            />
+          </div>
+          <div className="form-group">
+            <label htmlFor="timeEnd">Time End</label>
+            <input
+              type="text"
+              id="timeEnd"
+              name="timeEnd"
+              value={formData.timeEnd}
+              onChange={handleChange}
+              placeholder="e.g. 09:30 AM"
+            />
           </div>
 
           <div className="form-group full-width">
@@ -221,16 +317,48 @@ function EditAppointmentModal({ appointment, initialContact, initialAge, initial
             </select>
           </div>
 
+          {/* MULTI-SELECT PROCEDURE */}
           <div className="form-group full-width">
-            <label htmlFor="procedure">Procedure</label>
-            <input
-              type="text"
-              id="procedure"
-              name="procedure"
-              value={formData.procedure}
-              onChange={handleChange}
-            />
+            <label>Procedures / Services</label>
+            <div className="service-input-group">
+              <select
+                value={currentService}
+                onChange={(e) => setCurrentService(e.target.value)}
+              >
+                <option value="">Select a service to add...</option>
+                {dentalServices.map((service) => (
+                  <option key={service} value={service}>
+                    {service}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="add-service-btn"
+                onClick={handleAddService}
+                title="Add Service"
+              >
+                +
+              </button>
+            </div>
+
+            <div className="selected-services-container">
+              {selectedServices.length === 0 && <span style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: '0.9rem' }}>No services selected</span>}
+              {selectedServices.map((service, index) => (
+                <span key={`${service}-${index}`} className="service-chip">
+                  {service}
+                  <button
+                    type="button"
+                    className="remove-service-btn"
+                    onClick={() => handleRemoveService(service)}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
           </div>
+
           <div className="form-group full-width">
             <label htmlFor="notes">Notes</label>
             <textarea
