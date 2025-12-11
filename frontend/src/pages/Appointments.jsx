@@ -28,7 +28,12 @@ function Appointments() {
   useEffect(() => {
     const loadData = async () => {
       try {
-        await Promise.all([api.loadAppointments(), api.loadPatients(), api.loadDentists()]);
+        await Promise.all([
+          api.loadAppointments(),
+          api.loadPatients(),
+          api.loadDentists(),
+          api.loadQueue()
+        ]);
       } catch (err) {
         console.error("Error loading appointment data", err);
       }
@@ -60,26 +65,45 @@ function Appointments() {
     [appointments]
   );
 
+  // --- FIXED START HANDLER ---
   const handleStartAppointment = async (appointment) => {
     let patientId = appointment.patient_id;
     let fullPatientData = null;
 
+    // 1. Try to find patient in local store with Loose Equality (String vs Number fix)
     if (patientId) {
-      fullPatientData = patients.find((p) => p.id === patientId);
-    } else {
-      fullPatientData = patients.find((p) => p.name === appointment.patient);
-      patientId = fullPatientData ? fullPatientData.id : null;
+      fullPatientData = patients.find((p) => String(p.id) === String(patientId));
     }
 
-    if (!patientId) {
-      toast.error("Error: Could not find linked patient profile.");
+    // 2. If not found locally (e.g. newly created on mobile), FETCH IT
+    if (!fullPatientData && patientId) {
+      const loadingToast = toast.loading("Fetching patient details...");
+      try {
+        // Fetch fresh data from server
+        fullPatientData = await api.getPatientById(patientId);
+        toast.dismiss(loadingToast);
+      } catch (error) {
+        toast.dismiss(loadingToast);
+        console.error("Patient fetch error", error);
+        toast.error("Error: Could not load patient details. Check internet.");
+        return;
+      }
+    }
+
+    if (!fullPatientData) {
+      toast.error("Error: Patient data not found.");
       return;
     }
 
-    const isAlreadyInQueue = queue.some((p) => String(p.patient_id) === String(patientId));
+    // 3. Check Queue Conflict
+    const isAlreadyInQueue = queue.some((q) =>
+      String(q.patient_id) === String(patientId) &&
+      q.status !== 'Done' &&
+      q.status !== 'Cancelled'
+    );
 
     if (isAlreadyInQueue && appointment.status !== 'Checked-In') {
-      toast.error("Patient is already in the queue.");
+      toast.error(`Cannot Start: Patient is already in Queue.`);
       return;
     }
 
@@ -102,7 +126,8 @@ function Appointments() {
       navigate(`/app/patient/${patientId}`, {
         state: {
           patientData: fullPatientData,
-          dentistId: appointment.dentist_id
+          dentistId: appointment.dentist_id,
+          appointment: appointment // Triggers auto-fill in Patient Form
         }
       });
 
@@ -112,21 +137,17 @@ function Appointments() {
     }
   };
 
-  // --- UPDATED CONFLICT LOGIC ---
   const conflicts = useMemo(() => {
     const dentistMap = new Map();
-
     appointments.forEach((appt) => {
-      if (!appt.timeStart || !appt.timeEnd) return;
-
-      // FIX: Ignore appointments that are Done, Cancelled, or No-Show
+      if (!appt.timeStart) return;
       const status = (appt.status || "").toLowerCase().trim();
       if (["done", "cancelled", "no-show"].includes(status)) return;
 
       const start = toMinutes(appt.timeStart);
-      const end = toMinutes(appt.timeEnd);
-      const dentistName = dentists.find(d => d.id === appt.dentist_id)?.name || appt.dentist || "Unassigned";
+      const end = start + 30; // Default 30 min slots if end time missing
 
+      const dentistName = dentists.find(d => d.id === appt.dentist_id)?.name || appt.dentist || "Unassigned";
       const existing = dentistMap.get(dentistName) || [];
       existing.push({ ...appt, start, end, dentistName });
       dentistMap.set(dentistName, existing);
@@ -142,7 +163,6 @@ function Appointments() {
           if (second.start < first.end && second.end > first.start) {
             const p1 = patients.find(p => p.id === first.patient_id)?.name || first.patient;
             const p2 = patients.find(p => p.id === second.patient_id)?.name || second.patient;
-
             conflictMessages.push({
               id: `${first.id}-${second.id}`,
               message: `${first.dentistName}: ${p1} overlaps with ${p2}`,
@@ -151,7 +171,6 @@ function Appointments() {
         }
       }
     });
-
     return conflictMessages;
   }, [appointments, dentists, patients]);
 
@@ -161,104 +180,56 @@ function Appointments() {
       const patientName = patients.find((p) => p.id === appt.patient_id)?.name || appt.patient || "";
       const proc = appt.procedure || appt.reason || "";
 
-      const searchMatch = [
-        patientName,
-        dentistName,
-        appt.status,
-        proc,
-        appt.notes,
-      ]
-        .join(" ")
-        .toLowerCase()
-        .includes(search.toLowerCase());
-
-      const dentistMatch =
-        filters.dentist === "all" || dentistName === filters.dentist;
-
-      const statusMatch =
-        filters.status === "all" ? true : appt.status === filters.status;
-
-      const procedureMatch =
-        filters.procedure === "all" || proc === filters.procedure;
+      const searchMatch = [patientName, dentistName, appt.status, proc, appt.notes].join(" ").toLowerCase().includes(search.toLowerCase());
+      const dentistMatch = filters.dentist === "all" || dentistName === filters.dentist;
+      const statusMatch = filters.status === "all" ? true : appt.status === filters.status;
+      const procedureMatch = filters.procedure === "all" || proc === filters.procedure;
 
       let timeMatch = true;
       const startMinutes = toMinutes(appt.timeStart);
       if (filters.time === "morning") timeMatch = startMinutes < 12 * 60;
-      if (filters.time === "afternoon")
-        timeMatch = startMinutes >= 12 * 60 && startMinutes < 17 * 60;
+      if (filters.time === "afternoon") timeMatch = startMinutes >= 12 * 60 && startMinutes < 17 * 60;
       if (filters.time === "evening") timeMatch = startMinutes >= 17 * 60;
 
-      return (
-        searchMatch &&
-        dentistMatch &&
-        statusMatch &&
-        procedureMatch &&
-        timeMatch
-      );
+      return searchMatch && dentistMatch && statusMatch && procedureMatch && timeMatch;
     });
-  }, [
-    appointments,
-    dentists,
-    patients,
-    filters.dentist,
-    filters.procedure,
-    filters.status,
-    filters.time,
-    search,
-  ]);
+  }, [appointments, dentists, patients, filters, search]);
 
-  const handleFilterChange = (key, value) => {
-    setFilters((prev) => ({ ...prev, [key]: value }));
-  };
-
-  const handleEdit = (appointment) => {
-    setSelectedAppointment(appointment);
-    setIsEditModalOpen(true);
-  };
-
-  const handleDelete = (appointment) => {
-    setSelectedAppointment(appointment);
-    setIsDeleteModalOpen(true);
-  };
-
-  const handleCloseModal = () => {
-    setSelectedAppointment(null);
-    setIsEditModalOpen(false);
-    setIsDeleteModalOpen(false);
-  };
+  const handleFilterChange = (key, value) => setFilters((prev) => ({ ...prev, [key]: value }));
+  const handleEdit = (appointment) => { setSelectedAppointment(appointment); setIsEditModalOpen(true); };
+  const handleDelete = (appointment) => { setSelectedAppointment(appointment); setIsDeleteModalOpen(true); };
+  const handleCloseModal = () => { setSelectedAppointment(null); setIsEditModalOpen(false); setIsDeleteModalOpen(false); };
 
   const handleSaveAppointment = async (updatedAppointment) => {
     if (!updatedAppointment) return;
     try {
-      const patient = patients.find(p => p.id === updatedAppointment.patient_id);
-      if (patient) {
-        const updates = {};
-        if (updatedAppointment.patient_name && updatedAppointment.patient_name !== patient.name) {
-          updates.full_name = updatedAppointment.patient_name;
-        }
-        if (updatedAppointment.contact_number && updatedAppointment.contact_number !== patient.contact) {
-          updates.contact_number = updatedAppointment.contact_number;
-        }
-        if (updatedAppointment.age && updatedAppointment.age !== patient.age) {
-          updates.age = updatedAppointment.age;
-          updates.vitals = { ...(patient.vitals || {}), age: updatedAppointment.age };
-        }
-        if (updatedAppointment.sex && updatedAppointment.sex !== patient.sex) {
-          updates.gender = updatedAppointment.sex;
-        }
+      const updates = {};
+      const pid = updatedAppointment.patient_id;
 
-        if (Object.keys(updates).length > 0) {
-          await api.updatePatient(patient.id, updates);
-        }
+      const existingPatient = patients.find(p => p.id === pid);
+
+      if (updatedAppointment.patient_name) updates.full_name = updatedAppointment.patient_name;
+      if (updatedAppointment.contact_number) updates.contact_number = updatedAppointment.contact_number;
+      if (updatedAppointment.sex) updates.gender = updatedAppointment.sex;
+      if (updatedAppointment.age) {
+        updates.age = updatedAppointment.age;
+        const existingVitals = existingPatient?.vitals || {};
+        updates.vitals = { ...existingVitals, age: updatedAppointment.age };
+      }
+
+      if (pid && Object.keys(updates).length > 0) {
+        await api.updatePatient(pid, updates);
       }
 
       await api.updateAppointment(updatedAppointment.id, updatedAppointment);
 
-      toast.success("Appointment updated");
+      toast.success("Appointment & Patient info updated");
       handleCloseModal();
+
+      api.loadPatients();
     } catch (err) {
       console.error('Could not update appointment', err);
-      toast.error('Failed to update appointment');
+      toast.error('Failed to update. Check console.');
     }
   };
 
@@ -269,68 +240,37 @@ function Appointments() {
       toast.success("Appointment deleted");
       handleCloseModal();
     } catch (err) {
-      console.error('Failed to delete appointment', err);
       toast.error('Failed to delete appointment');
     }
   };
 
   const handleAddAppointment = async (appointmentData) => {
     try {
-      let patientId;
-      const existingPatient = patients.find(p => p.name?.toLowerCase() === appointmentData.patient_name?.toLowerCase());
-
-      if (existingPatient) {
-        patientId = existingPatient.id;
-        const updates = {};
-        if (appointmentData.contact_number && !existingPatient.contact) updates.contact_number = appointmentData.contact_number;
-        if (appointmentData.sex && !existingPatient.sex) updates.gender = appointmentData.sex;
-        if (appointmentData.age && !existingPatient.age) {
-          updates.age = appointmentData.age;
-          updates.vitals = { ...(existingPatient.vitals || {}), age: appointmentData.age };
-        }
-
-        if (Object.keys(updates).length > 0) {
-          await api.updatePatient(patientId, updates);
-        }
-      } else {
-        const newPatient = await api.createPatient({
-          full_name: appointmentData.patient_name,
-          contact_number: appointmentData.contact_number,
-          gender: appointmentData.sex,
-          age: appointmentData.age,
-          vitals: { age: appointmentData.age }
-        });
-        patientId = newPatient.id;
-      }
+      const newPatient = await api.createPatient({
+        full_name: appointmentData.patient_name,
+        contact_number: appointmentData.contact_number,
+        gender: appointmentData.sex,
+        age: appointmentData.age,
+        vitals: { age: appointmentData.age }
+      });
 
       const appointmentToCreate = {
         ...appointmentData,
-        patient_id: patientId,
+        patient_id: newPatient.id,
       };
-
-      delete appointmentToCreate.patient_name;
-      delete appointmentToCreate.contact_number;
-      delete appointmentToCreate.age;
-      delete appointmentToCreate.sex;
 
       await api.createAppointment(appointmentToCreate);
       toast.success("Appointment added");
       setIsAddModalOpen(false);
     } catch (err) {
-      console.error('Failed to create appointment', err);
       toast.error('Failed to add appointment');
     }
-  };
-
-  const handleReschedule = () => {
-    toast("Please edit the appointment time to resolve the conflict.");
   };
 
   const getSelectedPatientData = (field) => {
     if (!selectedAppointment) return "";
     const p = patients.find((p) => p.id === selectedAppointment.patient_id);
     if (!p) return "";
-
     if (field === 'contact') return p.contact || "";
     if (field === 'age') return p.age || p.vitals?.age || "";
     if (field === 'sex') return p.sex || p.gender || "";
@@ -342,86 +282,22 @@ function Appointments() {
       <div className="appointments-header">
         <h2 className="appointments-title">Appointments</h2>
         <div className="appointments-search">
-          <input
-            type="text"
-            placeholder="Search..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+          <input type="text" placeholder="Search..." value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
         <div className="appointments-actions">
-          <button className="quick-action-btn" onClick={() => setIsAddModalOpen(true)}>
-            Add Appointment
-          </button>
+          <button className="quick-action-btn" onClick={() => setIsAddModalOpen(true)}>Add Appointment</button>
         </div>
       </div>
+
       <div className="appointments-filters">
-        <div className="filter-group">
-          <label htmlFor="dentist-select">Dentist</label>
-          <select
-            id="dentist-select"
-            value={filters.dentist}
-            onChange={(e) => handleFilterChange("dentist", e.target.value)}
-          >
-            <option value="all">All</option>
-            {dentists.map((d) => (
-              <option key={d.id} value={d.name}>
-                {d.name}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="filter-group">
-          <label htmlFor="status-select">Status</label>
-          <select
-            id="status-select"
-            value={filters.status}
-            onChange={(e) => handleFilterChange("status", e.target.value)}
-          >
-            <option value="all">All</option>
-            <option value="Scheduled">Scheduled</option>
-            <option value="Checked-In">Checked-In</option>
-            <option value="Done">Done</option>
-            <option value="Cancelled">Cancelled</option>
-          </select>
-        </div>
-
-        <div className="filter-group">
-          <label htmlFor="procedure-select">Procedure</label>
-          <select
-            id="procedure-select"
-            value={filters.procedure}
-            onChange={(e) => handleFilterChange("procedure", e.target.value)}
-          >
-            <option value="all">All</option>
-            {procedures.map((p) => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="filter-group">
-          <label htmlFor="time-select">Time</label>
-          <select
-            id="time-select"
-            value={filters.time}
-            onChange={(e) => handleFilterChange("time", e.target.value)}
-          >
-            <option value="all">All</option>
-            <option value="morning">Morning</option>
-            <option value="afternoon">Afternoon</option>
-          </select>
-        </div>
+        <div className="filter-group"><label htmlFor="dentist-select">Dentist</label><select id="dentist-select" value={filters.dentist} onChange={(e) => handleFilterChange("dentist", e.target.value)}><option value="all">All</option>{dentists.map((d) => (<option key={d.id} value={d.name}>{d.name}</option>))}</select></div>
+        <div className="filter-group"><label htmlFor="status-select">Status</label><select id="status-select" value={filters.status} onChange={(e) => handleFilterChange("status", e.target.value)}><option value="all">All</option><option value="Scheduled">Scheduled</option><option value="Checked-In">Checked-In</option><option value="Done">Done</option><option value="Cancelled">Cancelled</option></select></div>
+        <div className="filter-group"><label htmlFor="procedure-select">Procedure</label><select id="procedure-select" value={filters.procedure} onChange={(e) => handleFilterChange("procedure", e.target.value)}><option value="all">All</option>{procedures.map((p) => (<option key={p} value={p}>{p}</option>))}</select></div>
+        <div className="filter-group"><label htmlFor="time-select">Time</label><select id="time-select" value={filters.time} onChange={(e) => handleFilterChange("time", e.target.value)}><option value="all">All</option><option value="morning">Morning</option><option value="afternoon">Afternoon</option></select></div>
       </div>
 
       <div className="appointments-legend">
-        <StatusBadge status="Scheduled" />
-        <StatusBadge status="Checked-In" />
-        <StatusBadge status="Done" />
-        <StatusBadge status="Cancelled" />
+        <StatusBadge status="Scheduled" /><StatusBadge status="Checked-In" /><StatusBadge status="Done" /><StatusBadge status="Cancelled" />
       </div>
 
       {conflicts.length > 0 && (
@@ -431,17 +307,8 @@ function Appointments() {
             <p className="conflict-title">Overlapping appointments detected:</p>
             <ul style={{ paddingLeft: '1rem', marginTop: '0.5rem' }}>
               {conflicts.map((conflict) => (
-                <li
-                  key={conflict.id}
-                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}
-                >
+                <li key={conflict.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
                   <span>{conflict.message}</span>
-                  <button
-                    onClick={handleReschedule}
-                    className="reschedule-btn"
-                  >
-                    Reschedule
-                  </button>
                 </li>
               ))}
             </ul>
@@ -451,21 +318,10 @@ function Appointments() {
 
       <div className="appointments-table-container">
         <table className="appointments-table">
-          <thead>
-            <tr>
-              <th>Time</th>
-              <th>Patient</th>
-              <th>Dentist</th>
-              <th>Procedure</th>
-              <th>Status</th>
-              <th>Notes</th>
-              <th>Contact</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
+          <thead><tr><th>Time</th><th>Patient</th><th>Dentist</th><th>Procedure</th><th>Status</th><th>Notes</th><th>Contact</th><th>Actions</th></tr></thead>
           <tbody>
             {filteredAppointments.length === 0 ? (
-              <tr><td colSpan="8" style={{ textAlign: "center", padding: "2rem" }}>No appointments found for this filter.</td></tr>
+              <tr><td colSpan="8" style={{ textAlign: "center", padding: "2rem" }}>No appointments found.</td></tr>
             ) : (
               filteredAppointments.map((a) => {
                 const s = (a.status || "").toLowerCase().trim();
@@ -474,41 +330,19 @@ function Appointments() {
                 return (
                   <tr key={a.id}>
                     <td className="time-cell">
-                      <div>{a.timeStart}</div>
-                      <span className="time-end">{a.timeEnd}</span>
+                      <div style={{ fontWeight: 'bold', fontSize: '1rem' }}>{a.timeStart}</div>
                     </td>
                     <td>{patients.find((p) => p.id === a.patient_id)?.name || a.patient}</td>
                     <td>{dentists.find((d) => d.id === a.dentist_id)?.name || a.dentist}</td>
-                    <td>
-                      <span className="badge badge-neutral">{a.procedure || a.reason}</span>
-                    </td>
-                    <td>
-                      <StatusBadge status={a.status} />
-                    </td>
-                    <td>
-                      <div className="notes-pill">{a.notes}</div>
-                    </td>
+                    <td><span className="badge badge-neutral">{a.procedure || a.reason}</span></td>
+                    <td><StatusBadge status={a.status} /></td>
+                    <td><div className="notes-pill">{a.notes}</div></td>
                     <td className="contact-cell">
-                      <button
-                        type="button"
-                        className="contact-button"
-                        aria-label={`View contact for ${a.patient}`}
-                        onClick={() =>
-                          setActiveContactId((prev) =>
-                            prev === a.id ? null : a.id
-                          )
-                        }
-                      >
-                        📇
-                      </button>
+                      <button type="button" className="contact-button" onClick={() => setActiveContactId((prev) => prev === a.id ? null : a.id)}>📇</button>
                       {activeContactId === a.id && (
                         <div className="contact-popover">
-                          <p>
-                            <strong>Phone:</strong> {patients.find((p) => p.id === a.patient_id)?.contact || a.contact?.phone || ''}
-                          </p>
-                          <p>
-                            <strong>Email:</strong> {patients.find((p) => p.id === a.patient_id)?.email || a.contact?.email || ''}
-                          </p>
+                          <p><strong>Phone:</strong> {patients.find((p) => p.id === a.patient_id)?.contact || a.contact?.phone || ''}</p>
+                          <p><strong>Email:</strong> {patients.find((p) => p.id === a.patient_id)?.email || a.contact?.email || ''}</p>
                         </div>
                       )}
                     </td>
@@ -517,11 +351,10 @@ function Appointments() {
                       <button
                         className="start-btn"
                         onClick={() => handleStartAppointment(a)}
-                        disabled={!canStart}
                         title={!canStart ? "Status must be Scheduled or Checked-In" : "Start Appointment"}
-                      >
-                        Start
-                      </button>
+                        style={!canStart ? { backgroundColor: '#adb5bd', cursor: 'not-allowed' } : {}}
+                        disabled={!canStart}
+                      >Start</button>
                       <button className="delete-btn" onClick={() => handleDelete(a)}>Delete</button>
                     </td>
                   </tr>
@@ -542,23 +375,8 @@ function Appointments() {
           dentists={dentists}
         />
       )}
-      {isAddModalOpen && (
-        <AddAppointmentModal
-          isOpen={isAddModalOpen}
-          onClose={() => setIsAddModalOpen(false)}
-          patients={patients}
-          dentists={dentists}
-          onSave={handleAddAppointment}
-        />
-      )}
-      {isDeleteModalOpen && (
-        <ConfirmationModal
-          isOpen={isDeleteModalOpen}
-          onClose={handleCloseModal}
-          onConfirm={handleConfirmDelete}
-          message="Are you sure you want to delete this appointment?"
-        />
-      )}
+      {isAddModalOpen && <AddAppointmentModal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} dentists={dentists} onSave={handleAddAppointment} />}
+      {isDeleteModalOpen && <ConfirmationModal isOpen={isDeleteModalOpen} onClose={handleCloseModal} onConfirm={handleConfirmDelete} message="Delete appointment?" />}
     </div>
   );
 }

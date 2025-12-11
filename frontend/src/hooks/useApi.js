@@ -71,15 +71,17 @@ export default function useApi() {
     try {
       const list = await api.getAppointments();
       const transformedList = list.map(appt => {
-        const apptDate = new Date(appt.appointment_datetime);
-        const timeStart = apptDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-        const endDate = new Date(apptDate.getTime() + 60 * 60 * 1000);
-        const timeEnd = endDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+        // FIX: Remove manual timeEnd calculation
+        let timeStart = "";
+        if (appt.appointment_datetime) {
+            const apptDate = new Date(appt.appointment_datetime);
+            timeStart = apptDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+        }
 
         return {
           ...appt,
           timeStart,
-          timeEnd,
+          // timeEnd is no longer calculated or used
           patient: appt.full_name,
         };
       });
@@ -146,7 +148,6 @@ export default function useApi() {
     }
   }, [setTreatments]);
 
-  // UPDATED: loadReports now accepts a date
   const loadReports = useCallback(async (date) => {
     setLoading(true);
     setError(null);
@@ -162,7 +163,6 @@ export default function useApi() {
     }
   }, [setReports]);
 
-  // CRUD helpers
   const createPatient = useCallback(async (payload) => {
     const created = await api.createPatient(payload);
     const mapServerToFrontend = (p) => {
@@ -232,13 +232,11 @@ export default function useApi() {
     if (created?.id) {
       const apptDate = new Date(created.appointment_datetime);
       const timeStart = apptDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-      const endDate = new Date(apptDate.getTime() + 60 * 60 * 1000);
-      const timeEnd = endDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+      // Removed TimeEnd generation
 
       const transformed = {
         ...created,
         timeStart,
-        timeEnd,
         patient: created.full_name,
       };
       addAppointment(transformed);
@@ -251,13 +249,10 @@ export default function useApi() {
     if (updated && updated.id) {
       const apptDate = new Date(updated.appointment_datetime);
       const timeStart = apptDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-      const endDate = new Date(apptDate.getTime() + 60 * 60 * 1000);
-      const timeEnd = endDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-
+      
       const transformed = {
         ...updated,
         timeStart,
-        timeEnd,
         patient: updated.full_name,
       };
       updateAppointmentStore(transformed);

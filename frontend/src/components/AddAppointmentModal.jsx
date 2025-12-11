@@ -1,7 +1,8 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import toast from "react-hot-toast";
 import "../styles/components/EditAppointmentModal.css";
 import { dentalServices } from "../data/services";
+import api from "../api/apiClient";
 
 function formatTime12Hour(time24) {
   if (!time24) return "";
@@ -14,13 +15,22 @@ function formatTime12Hour(time24) {
   return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")} ${ampm}`;
 }
 
+// Convert "HH:MM" -> minutes
 function toMinutes24(timeString) {
   if (!timeString) return 0;
   const [hours, minutes] = timeString.split(":").map(Number);
   return hours * 60 + minutes;
 }
 
-// Map day index (0-6) to string
+// [FIX] Helper to get local date string YYYY-MM-DD correctly
+function getLocalToday() {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 function AddAppointmentModal({ isOpen, onClose, dentists = [], onSave }) {
@@ -30,9 +40,8 @@ function AddAppointmentModal({ isOpen, onClose, dentists = [], onSave }) {
     age: "",
     sex: "",
     dentist_id: "",
-    appointmentDate: new Date().toISOString().split('T')[0],
+    appointmentDate: getLocalToday(), // [FIX] Use local date helper
     timeStart: "",
-    timeEnd: "",
     notes: "",
     status: "Scheduled",
   });
@@ -41,10 +50,29 @@ function AddAppointmentModal({ isOpen, onClose, dentists = [], onSave }) {
   const [currentService, setCurrentService] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
-  // Find the currently selected dentist object to display their schedule
+  // State for limit checking
+  const [availability, setAvailability] = useState({ count: 0, limit: 5, isFull: false, checked: false });
+
   const selectedDentist = useMemo(() => {
     return dentists.find(d => String(d.id) === String(form.dentist_id));
   }, [dentists, form.dentist_id]);
+
+  // Check Availability Effect
+  useEffect(() => {
+    async function check() {
+      if (form.dentist_id && form.appointmentDate) {
+        try {
+          const res = await api.checkAppointmentLimit(form.dentist_id, form.appointmentDate);
+          setAvailability({ ...res, checked: true });
+        } catch (e) {
+          console.error("Failed to check limit", e);
+        }
+      } else {
+        setAvailability({ count: 0, limit: 5, isFull: false, checked: false });
+      }
+    }
+    check();
+  }, [form.dentist_id, form.appointmentDate]);
 
   if (!isOpen) return null;
 
@@ -67,18 +95,15 @@ function AddAppointmentModal({ isOpen, onClose, dentists = [], onSave }) {
     setSelectedServices(selectedServices.filter(s => s !== serviceToRemove));
   };
 
-  // --- VALIDATION LOGIC ---
   const validateSchedule = () => {
     if (!selectedDentist) return null;
 
-    // 1. Check Status
     if (selectedDentist.status === "Off") {
-      return `Dr. ${selectedDentist.name} is marked as 'Off' and cannot accept appointments.`;
+      return `Dr. ${selectedDentist.name} is marked as 'Off'.`;
     }
 
-    // 2. Check Working Days
     const dateObj = new Date(form.appointmentDate);
-    const dayIndex = dateObj.getDay(); // 0 = Sun
+    const dayIndex = dateObj.getDay();
     const worksToday = selectedDentist.days?.includes(dayIndex);
 
     if (selectedDentist.days && !worksToday) {
@@ -86,63 +111,58 @@ function AddAppointmentModal({ isOpen, onClose, dentists = [], onSave }) {
       return `Dr. ${selectedDentist.name} does not work on this day. Available days: ${workingDays}`;
     }
 
-    // 3. Check Leave Days
     if (selectedDentist.leaveDays?.includes(form.appointmentDate)) {
       return `Dr. ${selectedDentist.name} is on leave on ${form.appointmentDate}.`;
     }
 
-    // 4. Check Time Limits (Operating Hours & Lunch)
-    if (form.timeStart && form.timeEnd) {
+    if (form.timeStart) {
       const startMin = toMinutes24(form.timeStart);
-      const endMin = toMinutes24(form.timeEnd);
 
-      // Check Operating Hours
       if (selectedDentist.operatingHours) {
         const opStart = toMinutes24(selectedDentist.operatingHours.start);
         const opEnd = toMinutes24(selectedDentist.operatingHours.end);
-        if (startMin < opStart || endMin > opEnd) {
+        // Just checking start time is within bounds
+        if (startMin < opStart || startMin > opEnd) {
           return `Time is outside operating hours (${selectedDentist.operatingHours.start} - ${selectedDentist.operatingHours.end}).`;
         }
       }
 
-      // Helper to check overlap
-      const isOverlapping = (s1, e1, s2, e2) => s1 < e2 && e1 > s2;
-
-      // Check Lunch
+      // Check Breaks (Overlap logic simplified to point-in-time for single start)
       if (selectedDentist.lunch) {
         const lStart = toMinutes24(selectedDentist.lunch.start);
         const lEnd = toMinutes24(selectedDentist.lunch.end);
-        if (isOverlapping(startMin, endMin, lStart, lEnd)) {
-          return `Time overlaps with lunch break (${selectedDentist.lunch.start} - ${selectedDentist.lunch.end}).`;
+        if (startMin >= lStart && startMin < lEnd) {
+          return `Time is during lunch break (${selectedDentist.lunch.start} - ${selectedDentist.lunch.end}).`;
         }
       }
 
-      // Check Breaks
       if (selectedDentist.breaks) {
         for (const brk of selectedDentist.breaks) {
           const bStart = toMinutes24(brk.start);
           const bEnd = toMinutes24(brk.end);
-          if (isOverlapping(startMin, endMin, bStart, bEnd)) {
-            return `Time overlaps with a scheduled break (${brk.start} - ${brk.end}).`;
+          if (startMin >= bStart && startMin < bEnd) {
+            return `Time is during a scheduled break (${brk.start} - ${brk.end}).`;
           }
         }
       }
     }
 
-    return null; // Valid
+    return null;
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (availability.isFull) {
+      return toast.error("Daily limit reached. Please use Walk-in Queue.");
+    }
+
     if (!form.patient_name.trim()) return toast.error("Please enter a patient name.");
     if (!form.dentist_id) return toast.error("Please select a dentist.");
     if (!form.appointmentDate) return toast.error("Please select a date.");
-    if (!form.timeStart || !form.timeEnd) return toast.error("Please select both start and end times.");
+    if (!form.timeStart) return toast.error("Please select a start time.");
 
     if (selectedServices.length === 0) return toast.error("Please select at least one procedure/service.");
-    if (toMinutes24(form.timeEnd) <= toMinutes24(form.timeStart)) return toast.error("End time must be after start time.");
 
-    // Perform Schedule Validation
     const scheduleError = validateSchedule();
     if (scheduleError) {
       toast.error(scheduleError);
@@ -152,7 +172,6 @@ function AddAppointmentModal({ isOpen, onClose, dentists = [], onSave }) {
     setIsSaving(true);
     try {
       const fullTimeStart = `${form.appointmentDate} ${formatTime12Hour(form.timeStart)}`;
-      const fullTimeEnd = `${form.appointmentDate} ${formatTime12Hour(form.timeEnd)}`;
       const procedureString = selectedServices.join(", ");
 
       await onSave({
@@ -160,12 +179,13 @@ function AddAppointmentModal({ isOpen, onClose, dentists = [], onSave }) {
         procedure: procedureString,
         dentist_id: Number(form.dentist_id),
         timeStart: fullTimeStart,
-        timeEnd: fullTimeEnd,
+        // Removed timeEnd
       });
       setSelectedServices([]);
     } catch (error) {
       console.error(error);
-      toast.error("Failed to save appointment.");
+      const msg = error.body?.message || "Failed to save appointment.";
+      toast.error(msg);
     } finally {
       setIsSaving(false);
     }
@@ -176,7 +196,6 @@ function AddAppointmentModal({ isOpen, onClose, dentists = [], onSave }) {
       <div className="modal-content">
         <h2>Add Appointment</h2>
 
-        {/* FORM CONTENT */}
         <div className="form-grid">
           <div className="form-group full-width">
             <label htmlFor="patient_name">Patient Name</label>
@@ -239,13 +258,33 @@ function AddAppointmentModal({ isOpen, onClose, dentists = [], onSave }) {
               ))}
             </select>
 
-            {/* NEW: VISUAL SCHEDULE INFO */}
+            {/* DENTIST DETAILS + LIMIT INFO */}
             {selectedDentist && (
               <div style={{ marginTop: '8px', padding: '10px', background: '#f0f9ff', borderRadius: '8px', fontSize: '0.9rem', color: '#0c4a6e', border: '1px solid #bae6fd' }}>
-                <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>Schedule for {selectedDentist.name}:</div>
-                <div>📅 Days: {selectedDentist.days?.map(d => DAYS[d]).join(", ")}</div>
-                <div>⏰ Hours: {selectedDentist.operatingHours?.start} - {selectedDentist.operatingHours?.end}</div>
-                {selectedDentist.lunch && <div>🍽️ Lunch: {selectedDentist.lunch.start} - {selectedDentist.lunch.end}</div>}
+                <div style={{ fontWeight: 'bold', marginBottom: '6px', borderBottom: '1px solid #bae6fd', paddingBottom: '4px', display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Schedule for {selectedDentist.name}</span>
+                  {/* Limit Badge */}
+                  <span style={{
+                    color: availability.isFull ? '#dc2626' : '#166534',
+                    backgroundColor: availability.isFull ? '#fee2e2' : '#dcfce7',
+                    padding: '0 6px', borderRadius: '4px', fontSize: '0.8rem'
+                  }}>
+                    {availability.checked ? `${availability.count}/${availability.limit} Booked` : "..."}
+                  </span>
+                </div>
+
+                <div style={{ display: 'grid', gap: '2px' }}>
+                  <div>📅 Days: {selectedDentist.days?.map(d => DAYS[d]).join(", ")}</div>
+                  <div>⏰ Hours: {selectedDentist.operatingHours?.start} - {selectedDentist.operatingHours?.end}</div>
+                  {selectedDentist.lunch && <div>🍽️ Lunch: {selectedDentist.lunch.start} - {selectedDentist.lunch.end}</div>}
+                </div>
+
+                {/* VISIBLE WARNING IF FULL */}
+                {availability.isFull && (
+                  <div style={{ marginTop: '8px', color: '#dc2626', fontWeight: 'bold', fontSize: '0.85rem' }}>
+                    ⚠️ Limit Reached. Cannot book.
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -270,18 +309,10 @@ function AddAppointmentModal({ isOpen, onClose, dentists = [], onSave }) {
               name="timeStart"
               value={form.timeStart}
               onChange={handleChange}
+              disabled={availability.isFull}
             />
           </div>
-          <div className="form-group">
-            <label htmlFor="timeEnd">Time End</label>
-            <input
-              type="time"
-              id="timeEnd"
-              name="timeEnd"
-              value={form.timeEnd}
-              onChange={handleChange}
-            />
-          </div>
+          {/* REMOVED TIME END INPUT */}
 
           <div className="form-group full-width">
             <label htmlFor="service-select">Procedures / Services</label>
@@ -331,8 +362,13 @@ function AddAppointmentModal({ isOpen, onClose, dentists = [], onSave }) {
 
         <div className="modal-actions">
           <button type="button" onClick={onClose}>Cancel</button>
-          <button type="button" onClick={handleSubmit} disabled={isSaving}>
-            {isSaving ? "Adding..." : "Add Appointment"}
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={isSaving || availability.isFull}
+            style={availability.isFull ? { backgroundColor: '#9ca3af', cursor: 'not-allowed' } : {}}
+          >
+            {isSaving ? "Adding..." : availability.isFull ? "Limit Reached" : "Add Appointment"}
           </button>
         </div>
       </div>

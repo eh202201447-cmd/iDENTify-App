@@ -18,6 +18,9 @@ function PatientForm() {
   const queue = useAppStore((state) => state.queue);
   const appointments = useAppStore((state) => state.appointments);
 
+  // 1. RETRIEVE PASSED APPOINTMENT DATA (New Booking)
+  const linkedAppointment = location.state?.appointment || null;
+
   // Helper to safely calculate age
   const getDisplayAge = (p) => {
     if (!p) return "N/A";
@@ -71,7 +74,7 @@ function PatientForm() {
   const [isXrayViewerOpen, setIsXrayViewerOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Form States - Timeline (UPDATED: Added 'image' field)
+  // Form States - Timeline
   const [timelineForm, setTimelineForm] = useState({ start_time: "", end_time: "", provider: "", notes: "", image: null });
 
   // Multi-Select for Timeline Procedure
@@ -82,8 +85,38 @@ function PatientForm() {
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const [vitals, setVitals] = useState({ bp: "", pulse: "", temp: "" });
 
-  // NEW: Local state for temperature unit (defaults to Celsius)
   const [tempUnit, setTempUnit] = useState("C");
+
+  // 2. NEW EFFECT: AUTO-FILL FROM APPOINTMENT
+  useEffect(() => {
+    if (linkedAppointment) {
+      // Auto-fill Procedures
+      if (linkedAppointment.procedure) {
+        const procedures = linkedAppointment.procedure.split(',').map(s => s.trim()).filter(Boolean);
+        setSelectedTimelineServices(procedures);
+      }
+
+      // Auto-fill Provider
+      const providerName = linkedAppointment.dentist_name || linkedAppointment.dentist || "";
+
+      // Auto-fill Start Date & Time
+      let formattedStart = "";
+      if (linkedAppointment.appointment_datetime) {
+        const dateObj = new Date(linkedAppointment.appointment_datetime);
+        const datePart = dateObj.toLocaleDateString();
+        const timePart = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        formattedStart = `${datePart} ${timePart}`;
+      } else if (linkedAppointment.timeStart) {
+        formattedStart = `${new Date().toLocaleDateString()} ${linkedAppointment.timeStart}`;
+      }
+
+      setTimelineForm(prev => ({
+        ...prev,
+        provider: providerName,
+        start_time: formattedStart
+      }));
+    }
+  }, [linkedAppointment]);
 
   useEffect(() => {
     const loadData = async () => {
@@ -116,9 +149,11 @@ function PatientForm() {
           setUploadedFiles(fullPatientData.xrays);
         }
 
-        if (fullPatientData.vitals) {
+        // [FIXED] VITALS LOGIC
+        // Only load old vitals if we are NOT starting a new appointment.
+        // If linkedAppointment exists, we want BLANK vitals for the new visit.
+        if (!linkedAppointment && fullPatientData.vitals) {
           setVitals(prev => ({ ...prev, ...fullPatientData.vitals }));
-          // Detect unit from loaded data
           if (fullPatientData.vitals.temp && fullPatientData.vitals.temp.includes("F")) {
             setTempUnit("F");
           } else {
@@ -126,16 +161,17 @@ function PatientForm() {
           }
         }
 
+        // Set Dentist ID
         setSelectedDentistId(prevId => {
           if (prevId) return prevId;
-          if (fullPatientData.vitals?.dentist_id) return fullPatientData.vitals.dentist_id;
-          const queueItem = queue.find(q => String(q.patient_id) === String(id) && q.status !== "Done");
-          if (queueItem?.dentist_id) return queueItem.dentist_id;
-          const appt = appointments.find(a => String(a.patient_id) === String(id) && a.status !== "Done");
-          if (appt?.dentist_id) return appt.dentist_id;
+          // If viewing old record, use saved dentist
+          if (!linkedAppointment && fullPatientData.vitals?.dentist_id) return fullPatientData.vitals.dentist_id;
+          // If new appointment, prefer the appointment's dentist
+          if (linkedAppointment?.dentist_id) return linkedAppointment.dentist_id;
           return "";
         });
 
+        // Load Persistent Tooth Chart (Chart History always loads)
         const conditions = await api.getToothConditions(id);
         const newBoxMarks = Array(64).fill("");
         const newCircleShades = Array(52).fill(false);
@@ -155,6 +191,7 @@ function PatientForm() {
         setCircleShades(newCircleShades);
         setToothStatuses(newToothStatuses);
 
+        // Load History Lists
         const timeline = await api.getTreatmentTimeline(id);
         setTimelineEntries(timeline);
 
@@ -167,22 +204,19 @@ function PatientForm() {
     };
 
     loadData();
-  }, [id]);
+  }, [id, linkedAppointment]); // Added linkedAppointment dependency
 
   const updateVitals = (field, value) => setVitals(prev => ({ ...prev, [field]: value }));
 
-  // --- TEMPERATURE HANDLERS ---
   const handleTempNumberChange = (val) => {
     updateVitals("temp", val ? `${val} °${tempUnit}` : "");
   };
 
   const handleUnitToggle = (newUnit) => {
     const currentValStr = vitals.temp || "";
-    // Extract numeric part
     const match = currentValStr.match(/[\d.]+/);
 
     if (!match) {
-      // No number yet, just switch preference
       setTempUnit(newUnit);
       return;
     }
@@ -193,14 +227,12 @@ function PatientForm() {
       return;
     }
 
-    // Perform conversion
     if (tempUnit === "C" && newUnit === "F") {
       val = (val * 9 / 5) + 32;
     } else if (tempUnit === "F" && newUnit === "C") {
       val = (val - 32) * 5 / 9;
     }
 
-    // Round to 1 decimal
     val = Math.round(val * 10) / 10;
 
     setTempUnit(newUnit);
@@ -211,7 +243,6 @@ function PatientForm() {
     const match = (vitals.temp || "").toString().match(/[\d.]+/);
     return match ? match[0] : "";
   };
-  // -----------------------------
 
   const convertToBase64 = (file) => {
     return new Promise((resolve, reject) => {
@@ -222,7 +253,6 @@ function PatientForm() {
     });
   };
 
-  // Helper for timeline-specific upload
   const handleTimelineImageUpload = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
@@ -235,7 +265,6 @@ function PatientForm() {
     }
   };
 
-  // Original bulk upload handler (for Patient Gallery)
   const handleUpload = async (event) => {
     const files = Array.from(event.target.files || []);
     const newFiles = [];
@@ -351,23 +380,20 @@ function PatientForm() {
 
     const procedureString = selectedTimelineServices.join(", ");
 
-    // UPDATED: Now sending image_url
     const payload = {
       ...timelineForm,
       procedure_text: procedureString,
       patient_id: id,
       provider: providerName,
       start_time: timelineForm.start_time || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      image_url: timelineForm.image // Send the base64 image here
+      image_url: timelineForm.image
     };
 
     try {
       const newEntry = await api.addTreatmentTimelineEntry(payload);
       setTimelineEntries(prev => [...prev, newEntry]);
-      // Reset form including image
       setTimelineForm({ start_time: "", end_time: "", provider: "", notes: "", image: null });
       setSelectedTimelineServices([]);
-      // Clear file input manually if possible, or just let state handle it
       document.getElementById("timeline-file-input").value = "";
     } catch (error) {
       console.error("Failed to add timeline entry", error);
@@ -416,6 +442,7 @@ function PatientForm() {
   const closeContextMenu = () => { setIsContextMenuOpen(false); setContextMenu(null); };
   const openXrayViewer = (file) => { setSelectedXray(file); setIsXrayViewerOpen(true); };
   const closeXrayViewer = () => { setSelectedXray(null); setIsXrayViewerOpen(false); };
+
   const applyCode = (code) => {
     if (selected.kind === "box" && selected.index != null) {
       const newBoxMarks = boxMarks.map((v, i) => (i === selected.index ? code : v));
@@ -431,6 +458,7 @@ function PatientForm() {
     }
     closePanel();
   };
+
   const renderBoxRow = (rowIndex) => {
     const start = rowIndex * 16;
     return (
@@ -466,11 +494,36 @@ function PatientForm() {
     ));
   };
 
-  const treatmentOptions = [{ code: "FV", label: "Fluoride Varnish" }, { code: "FG", label: "Fluoride Gel" }, { code: "PFS", label: "Pit and Fissure Sealant" }, { code: "PF", label: "Permanent Filling" }, { code: "TF", label: "Temporary Filling" }, { code: "X", label: "Extraction" }, { code: "O", label: "Others" }, { code: "", label: "Clear (no mark)" }];
-  const conditionOptions = [{ code: "S", label: "Sealed" }, { code: "UN", label: "Unerupted" }, { code: "D", label: "Decayed" }, { code: "F", label: "Filled" }, { code: "M", label: "Missing" }, { code: "JC", label: "Jacket Crown" }, { code: "P", label: "Pontic" }, { code: "DX", label: "For Extraction" }, { code: "", label: "Clear (no mark)" }];
+  // FULL OPTIONS LISTS (Restored)
+  const treatmentOptions = [
+    { code: "FV", label: "Fluoride Varnish" },
+    { code: "FG", label: "Fluoride Gel" },
+    { code: "PFS", label: "Pit and Fissure Sealant" },
+    { code: "PF", label: "Permanent Filling" },
+    { code: "TF", label: "Temporary Filling" },
+    { code: "X", label: "Extraction" },
+    { code: "O", label: "Others" },
+    { code: "", label: "Clear (no mark)" }
+  ];
+
+  const conditionOptions = [
+    { code: "S", label: "Sealed" },
+    { code: "UN", label: "Unerupted" },
+    { code: "D", label: "Decayed" },
+    { code: "F", label: "Filled" },
+    { code: "M", label: "Missing" },
+    { code: "JC", label: "Jacket Crown" },
+    { code: "P", label: "Pontic" },
+    { code: "DX", label: "For Extraction" },
+    { code: "", label: "Clear (no mark)" }
+  ];
+
   const upperConditionRows = [["55", "54", "53", "52", "51", "61", "62", "63", "64", "65"], ["18", "17", "16", "15", "14", "13", "12", "11", "21", "22", "23", "24", "25", "26", "27", "28"]];
   const lowerConditionRows = [["48", "47", "46", "45", "44", "43", "42", "41", "31", "32", "33", "34", "35", "36", "37", "38"], ["85", "84", "83", "82", "81", "71", "72", "73", "74", "75"]];
+
   const panelTitle = selected.boxKind === "treatment" ? "Treatment" : selected.boxKind === "condition" ? "Condition" : "Legend";
+
+  // Dynamic Options
   const panelOptions = selected.boxKind === "treatment" ? treatmentOptions : selected.boxKind === "condition" ? conditionOptions : [];
 
   if (!patient) return <div>Loading...</div>;
@@ -511,7 +564,6 @@ function PatientForm() {
                   <div className="vital-field"><label>Pulse Rate</label><input className="pill-input-input" placeholder="72 bpm" value={vitals.pulse || ""} onChange={(e) => updateVitals("pulse", e.target.value)} /></div>
                 </div>
 
-                {/* IMPROVED TEMPERATURE FIELD */}
                 <div className="vital-row">
                   <div className="vital-field">
                     <label>Temperature</label>
@@ -554,12 +606,8 @@ function PatientForm() {
 
           {/* MULTI-SELECT TIMELINE ENTRY */}
           <div className="timeline-form">
-            <input className="pill-input-input" placeholder="Start (e.g. 09:00)" value={timelineForm.start_time} onChange={(e) => updateTimelineForm("start_time", e.target.value)} />
-            <input className="pill-input-input" placeholder="End (e.g. 09:30)" value={timelineForm.end_time} onChange={(e) => updateTimelineForm("end_time", e.target.value)} />
-            <input className="pill-input-input" placeholder="Updated by" value={timelineForm.provider} onChange={(e) => updateTimelineForm("provider", e.target.value)} />
-            <input className="pill-input-input" placeholder="Notes" value={timelineForm.notes} onChange={(e) => updateTimelineForm("notes", e.target.value)} />
-
-            {/* Procedure Dropdown with Chips */}
+            <input className="pill-input-input" placeholder="Start Date & Time" value={timelineForm.start_time} onChange={(e) => updateTimelineForm("start_time", e.target.value)} />
+            <input className="pill-input-input" placeholder="Provider" value={timelineForm.provider} onChange={(e) => updateTimelineForm("provider", e.target.value)} />
             <div style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', gap: '8px' }}>
               <div style={{ display: 'flex', gap: '8px' }}>
                 <select
@@ -574,7 +622,6 @@ function PatientForm() {
                 <button onClick={handleAddTimelineService} className="small-btn" style={{ width: 'auto' }}>+ Add</button>
               </div>
 
-              {/* Chips */}
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
                 {selectedTimelineServices.map(svc => (
                   <span key={svc} style={{ background: '#e0f2fe', color: '#0369a1', padding: '4px 8px', borderRadius: '12px', fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
@@ -585,7 +632,9 @@ function PatientForm() {
               </div>
             </div>
 
-            {/* NEW: ATTACH X-RAY TO TIMELINE */}
+            <input className="pill-input-input" placeholder="Notes" value={timelineForm.notes} onChange={(e) => updateTimelineForm("notes", e.target.value)} />
+
+            {/* ATTACH X-RAY */}
             <div style={{ gridColumn: '1 / -1', marginTop: '8px', padding: '10px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
               <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: 'bold', color: '#475569' }}>
                 Attach X-ray/Image for Mobile App
@@ -612,7 +661,7 @@ function PatientForm() {
           <div className="timeline-list">
             {timelineEntries.map((entry) => (
               <div key={entry.id} className="timeline-entry">
-                <div className="timeline-meta"><span>{entry.start_time} - {entry.end_time || "..."}</span><span>{entry.provider || "Unassigned"}</span></div>
+                <div className="timeline-meta"><span>{entry.start_time}</span><span>{entry.provider || "Unassigned"}</span></div>
                 <div>{entry.procedure_text}</div>
                 {entry.image_url && <div style={{ fontSize: '12px', color: '#0ea5e9', marginTop: '4px' }}>📎 Has attached image</div>}
                 <div className="timeline-entry-actions"><button className="small-btn danger" onClick={() => deleteTimelineEntry(entry.id)}>Delete</button></div>
@@ -668,7 +717,24 @@ function PatientForm() {
         <div className={`side-panel-backdrop${isPanelOpen ? " side-panel-open" : ""}`} onClick={closePanel}>
           <div className="side-panel" onClick={(e) => e.stopPropagation()}>
             <h3 className="section-title">{panelTitle}</h3>
-            <div className="side-panel-content">{panelOptions.length === 0 ? <p>Select a box to see treatment or condition options.</p> : <div className="options-grid">{panelOptions.map((option) => (<button key={option.code} className="option-pill" onClick={() => applyCode(option.code)}><strong>{option.code || "Clear"}</strong><span>{option.label}</span></button>))}</div>}</div>
+            <div className="side-panel-content">
+              {panelOptions.length === 0 ? (
+                <p>Select a box to see treatment or condition options.</p>
+              ) : (
+                <div className="options-grid">
+                  {panelOptions.map((option) => (
+                    <button
+                      key={option.code}
+                      className="option-pill"
+                      onClick={() => applyCode(option.code)}
+                    >
+                      <strong>{option.code || "Clear"}</strong>
+                      <span>{option.label}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>

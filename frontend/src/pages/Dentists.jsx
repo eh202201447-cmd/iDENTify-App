@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import "../styles/pages/Dentists.css";
@@ -12,7 +12,7 @@ const DAYS = [
   { label: "M", value: 1 },
   { label: "T", value: 2 },
   { label: "W", value: 3 },
-  { label: "T", value: 4 },
+  { label: "TH", value: 4 },
   { label: "F", value: 5 },
   { label: "S", value: 6 },
 ];
@@ -20,6 +20,8 @@ const DAYS = [
 function Dentists() {
   const api = useApi();
   const dentists = useAppStore((state) => state.dentists);
+  // Get the store action directly for Optimistic Updates
+  const updateDentistInStore = useAppStore((state) => state.updateDentist);
   const appointments = useAppStore((state) => state.appointments);
 
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -41,15 +43,32 @@ function Dentists() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Helper to save changes to DB
+  // Debounce Ref to prevent API flooding
+  const debounceRef = useRef({});
+
+  // Helper to save changes to DB with Optimistic Update
   const saveDentistChanges = async (dentist) => {
-    try {
-      await api.updateDentist(dentist.id, dentist);
-      toast.success("Schedule updated");
-    } catch (error) {
-      console.error("Failed to update dentist", error);
-      toast.error("Failed to save changes");
+    // 1. OPTIMISTIC UPDATE: Update UI immediately
+    updateDentistInStore(dentist);
+
+    // 2. DEBOUNCED API CALL: Wait 500ms before sending to server
+    // This prevents race conditions if user clicks multiple things quickly
+    if (debounceRef.current[dentist.id]) {
+      clearTimeout(debounceRef.current[dentist.id]);
     }
+
+    debounceRef.current[dentist.id] = setTimeout(async () => {
+      try {
+        await api.updateDentist(dentist.id, dentist);
+        toast.success("Schedule saved");
+      } catch (error) {
+        console.error("Failed to update dentist", error);
+        toast.error("Failed to save changes");
+        // Revert? (In a complex app, we would revert here. For now, next load fixes it)
+      } finally {
+        delete debounceRef.current[dentist.id];
+      }
+    }, 800);
   };
 
   const updateOperatingHours = (dentist, field, value) => {
@@ -68,16 +87,19 @@ function Dentists() {
     saveDentistChanges(updated);
   };
 
-  // --- NEW: TOGGLE WORKING DAYS ---
+  // --- TOGGLE WORKING DAYS ---
   const toggleWorkingDay = (dentist, dayIndex) => {
     const currentDays = dentist.days || [];
     let newDays;
-    if (currentDays.includes(dayIndex)) {
+    // Ensure we are working with numbers
+    const numericDay = Number(dayIndex);
+
+    if (currentDays.includes(numericDay)) {
       // Remove day
-      newDays = currentDays.filter(d => d !== dayIndex);
+      newDays = currentDays.filter(d => d !== numericDay);
     } else {
       // Add day and sort
-      newDays = [...currentDays, dayIndex].sort();
+      newDays = [...currentDays, numericDay].sort();
     }
     const updated = { ...dentist, days: newDays };
     saveDentistChanges(updated);

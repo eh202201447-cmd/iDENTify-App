@@ -5,80 +5,56 @@ import { dentalServices } from "../data/services";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-// --- HELPER FUNCTIONS FOR TIME CONVERSION ---
-
-// Convert "01:30 PM" (State format) -> "13:30" (Input format)
 function to24Hour(time12h) {
   if (!time12h) return "";
   const [time, modifier] = time12h.split(' ');
-  if (!time || !modifier) return time || ""; // Fallback
-
+  if (!time || !modifier) return time || "";
   let [hours, minutes] = time.split(':');
-  if (hours === '12') {
-    hours = '00';
-  }
-  if (modifier === 'PM') {
-    hours = parseInt(hours, 10) + 12;
-  }
-  // Handle 12 PM -> 12:00, 12 AM -> 00:00
-  if (modifier === 'PM' && hours === 24) hours = 12;
-
+  if (hours === '12') hours = '00';
+  if (modifier === 'PM') hours = parseInt(hours, 10) + 12;
   return `${String(hours).padStart(2, '0')}:${minutes}`;
 }
 
-// Convert "13:30" (Input format) -> "01:30 PM" (State format)
 function to12Hour(time24h) {
   if (!time24h) return "";
   const [hours, minutes] = time24h.split(':');
   let h = parseInt(hours, 10);
   const ampm = h >= 12 ? 'PM' : 'AM';
   h = h % 12;
-  h = h ? h : 12; // the hour '0' should be '12'
+  h = h ? h : 12;
   return `${String(h).padStart(2, '0')}:${minutes} ${ampm}`;
 }
 
-function toMinutes(timeString) {
-  if (!timeString) return 0;
-  const parts = timeString.split(" ");
-  if (parts.length < 2) return 0;
-  const [time, meridiem] = parts;
-  const [hourStr, minuteStr] = time.split(":");
-  let hour = Number(hourStr);
-  const minute = Number(minuteStr);
-  if (meridiem === "PM" && hour !== 12) hour += 12;
-  if (meridiem === "AM" && hour === 12) hour = 0;
-  return hour * 60 + minute;
-}
+function combineDateAndTime(dateStr, time12h) {
+  if (!dateStr || !time12h) return "";
+  // time12h format: "09:00 AM"
+  // dateStr format: "YYYY-MM-DD"
 
-// Parse "09:30 AM" -> 570
-function toMinutes12(timeString) {
-  return toMinutes(timeString);
-}
+  // Convert 12h time to 24h parts
+  const [time, modifier] = time12h.split(' ');
+  let [hours, minutes] = time.split(':');
+  if (hours === '12') hours = '00';
+  if (modifier === 'PM') hours = parseInt(hours, 10) + 12;
 
-// Parse "09:30" -> 570
-function toMinutes24(timeString) {
-  if (!timeString) return 0;
-  const [hours, minutes] = timeString.split(":").map(Number);
-  return hours * 60 + minutes;
-}
-
-function combineDateAndTime(originalDateStr, timeStr) {
-  if (!originalDateStr || !timeStr) return timeStr;
-  const dateObj = new Date(originalDateStr);
-  if (isNaN(dateObj.getTime())) return timeStr;
-  const year = dateObj.getFullYear();
-  const month = String(dateObj.getMonth() + 1).padStart(2, '0');
-  const day = String(dateObj.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day} ${timeStr}`;
+  return `${dateStr} ${String(hours).padStart(2, '0')}:${minutes}:00`;
 }
 
 function EditAppointmentModal({ appointment, initialContact, initialAge, initialSex, onSave, onCancel, dentists = [] }) {
   if (!appointment) return null;
 
+  // Extract YYYY-MM-DD from the appointment_datetime
+  const getInitialDate = () => {
+    if (appointment.appointment_datetime) {
+      // Handles "2025-12-11T10:00:00.000Z" or "2025-12-11 10:00:00"
+      return appointment.appointment_datetime.split('T')[0].split(' ')[0];
+    }
+    return new Date().toISOString().split('T')[0];
+  };
+
   const [formData, setFormData] = useState({
     patient_name: appointment.patient || appointment.patient_name || appointment.name || "",
+    appointmentDate: getInitialDate(), // NEW: Date State
     timeStart: appointment.timeStart || "",
-    timeEnd: appointment.timeEnd || "",
     dentist_id: appointment.dentist_id || dentists.find((d) => d.name === appointment.dentist)?.id || "",
     dentist: appointment.dentist || dentists.find((d) => d.id === appointment.dentist_id)?.name || "",
     notes: appointment.notes || "",
@@ -91,11 +67,6 @@ function EditAppointmentModal({ appointment, initialContact, initialAge, initial
   const [selectedServices, setSelectedServices] = useState([]);
   const [currentService, setCurrentService] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-
-  // Selected Dentist Object
-  const selectedDentist = useMemo(() => {
-    return dentists.find(d => String(d.id) === String(formData.dentist_id));
-  }, [dentists, formData.dentist_id]);
 
   useEffect(() => {
     const existingProcedure = appointment.procedure || appointment.reason || "";
@@ -113,10 +84,9 @@ function EditAppointmentModal({ appointment, initialContact, initialAge, initial
     }));
   };
 
-  // NEW: Specialized handler for Time Inputs
   const handleTimeChange = (e) => {
-    const { name, value } = e.target; // value is in 24h format (e.g., "13:30")
-    const time12 = to12Hour(value);   // Convert to "01:30 PM"
+    const { name, value } = e.target;
+    const time12 = to12Hour(value);
     setFormData((prev) => ({
       ...prev,
       [name]: time12,
@@ -137,92 +107,21 @@ function EditAppointmentModal({ appointment, initialContact, initialAge, initial
     setSelectedServices(selectedServices.filter(s => s !== serviceToRemove));
   };
 
-  const validateSchedule = () => {
-    if (!selectedDentist) return null;
-
-    const dateStr = appointment.appointment_datetime
-      ? new Date(appointment.appointment_datetime).toISOString().split('T')[0]
-      : new Date().toISOString().split('T')[0];
-
-    // 1. Status
-    if (selectedDentist.status === "Off") return `Dr. ${selectedDentist.name} is marked as Off.`;
-
-    // 2. Working Days
-    const dayOfWeek = new Date(dateStr).getDay();
-    const worksToday = selectedDentist.days?.includes(dayOfWeek);
-    if (selectedDentist.days && !worksToday) {
-      const workingDays = selectedDentist.days.map(d => DAYS[d]).join(", ");
-      return `Dr. ${selectedDentist.name} does not work on this day (${DAYS[dayOfWeek]}). Available: ${workingDays}`;
-    }
-
-    // 3. Leave
-    if (selectedDentist.leaveDays?.includes(dateStr)) return `Dr. ${selectedDentist.name} is on leave on ${dateStr}.`;
-
-    // 4. Time Logic
-    // Detect format (AM/PM vs 24h) based on string content
-    const is12Hour = formData.timeStart.includes("M"); // AM or PM
-    const startMin = is12Hour ? toMinutes12(formData.timeStart) : toMinutes24(formData.timeStart);
-    const endMin = is12Hour ? toMinutes12(formData.timeEnd) : toMinutes24(formData.timeEnd);
-
-    if (startMin >= endMin) return "End time must be after start time.";
-
-    // Operating Hours
-    if (selectedDentist.operatingHours) {
-      const opStart = toMinutes24(selectedDentist.operatingHours.start);
-      const opEnd = toMinutes24(selectedDentist.operatingHours.end);
-      if (startMin < opStart || endMin > opEnd) {
-        return `Time is outside operating hours (${selectedDentist.operatingHours.start} - ${selectedDentist.operatingHours.end}).`;
-      }
-    }
-
-    const isOverlapping = (s1, e1, s2, e2) => s1 < e2 && e1 > s2;
-
-    // Lunch
-    if (selectedDentist.lunch) {
-      const lStart = toMinutes24(selectedDentist.lunch.start);
-      const lEnd = toMinutes24(selectedDentist.lunch.end);
-      if (isOverlapping(startMin, endMin, lStart, lEnd)) {
-        return `Time overlaps with lunch break (${selectedDentist.lunch.start} - ${selectedDentist.lunch.end}).`;
-      }
-    }
-
-    // Breaks
-    if (selectedDentist.breaks) {
-      for (const brk of selectedDentist.breaks) {
-        const bStart = toMinutes24(brk.start);
-        const bEnd = toMinutes24(brk.end);
-        if (isOverlapping(startMin, endMin, bStart, bEnd)) {
-          return `Time overlaps with scheduled break (${brk.start} - ${brk.end}).`;
-        }
-      }
-    }
-
-    return null;
-  };
-
   const handleSave = () => {
     if (!formData.patient_name.trim()) return toast.error("Patient name cannot be empty.");
+    if (!formData.appointmentDate) return toast.error("Date cannot be empty.");
+    if (!formData.timeStart) return toast.error("Start time cannot be empty.");
 
-    // Warn if empty, but don't crash validation if user intends to clear it
     if (selectedServices.length === 0) {
       toast.error("Please select at least one procedure.");
       return;
     }
 
-    // Validate Schedule
-    const conflictError = validateSchedule();
-    if (conflictError) {
-      toast.error(conflictError);
-      return;
-    }
-
     setIsLoading(true);
 
-    const originalDate = appointment.appointment_datetime || new Date().toISOString();
-    const fullTimeStart = combineDateAndTime(originalDate, formData.timeStart);
-    const fullTimeEnd = combineDateAndTime(originalDate, formData.timeEnd);
+    // Combine Date + Time
+    const fullTimeStart = combineDateAndTime(formData.appointmentDate, formData.timeStart);
     const dentistNameFromId = dentists.find((d) => d.id === Number(formData.dentist_id))?.name;
-
     const procedureString = selectedServices.join(", ");
 
     const updatedData = {
@@ -231,8 +130,7 @@ function EditAppointmentModal({ appointment, initialContact, initialAge, initial
       dentist_id: Number(formData.dentist_id),
       dentist: dentistNameFromId || formData.dentist,
       procedure: procedureString,
-      timeStart: fullTimeStart,
-      timeEnd: fullTimeEnd
+      timeStart: fullTimeStart, // Save full datetime
     };
 
     onSave(updatedData);
@@ -290,24 +188,26 @@ function EditAppointmentModal({ appointment, initialContact, initialAge, initial
             />
           </div>
 
+          {/* NEW: DATE INPUT */}
+          <div className="form-group">
+            <label htmlFor="appointmentDate">Date</label>
+            <input
+              type="date"
+              id="appointmentDate"
+              name="appointmentDate"
+              value={formData.appointmentDate}
+              onChange={handleChange}
+            />
+          </div>
+
           <div className="form-group">
             <label htmlFor="timeStart">Time Start</label>
             <input
-              type="time" // CHANGED TO TIME
+              type="time"
               id="timeStart"
               name="timeStart"
-              value={to24Hour(formData.timeStart)} // CONVERT STATE (12H) TO INPUT (24H)
-              onChange={handleTimeChange} // USE SPECIAL HANDLER
-            />
-          </div>
-          <div className="form-group">
-            <label htmlFor="timeEnd">Time End</label>
-            <input
-              type="time" // CHANGED TO TIME
-              id="timeEnd"
-              name="timeEnd"
-              value={to24Hour(formData.timeEnd)} // CONVERT STATE (12H) TO INPUT (24H)
-              onChange={handleTimeChange} // USE SPECIAL HANDLER
+              value={to24Hour(formData.timeStart)}
+              onChange={handleTimeChange}
             />
           </div>
 
@@ -334,15 +234,6 @@ function EditAppointmentModal({ appointment, initialContact, initialAge, initial
                 </option>
               ))}
             </select>
-
-            {selectedDentist && (
-              <div style={{ marginTop: '8px', padding: '10px', background: '#f0f9ff', borderRadius: '8px', fontSize: '0.9rem', color: '#0c4a6e', border: '1px solid #bae6fd' }}>
-                <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>Schedule for {selectedDentist.name}:</div>
-                <div>📅 Days: {selectedDentist.days?.map(d => DAYS[d]).join(", ")}</div>
-                <div>⏰ Hours: {selectedDentist.operatingHours?.start} - {selectedDentist.operatingHours?.end}</div>
-                {selectedDentist.lunch && <div>🍽️ Lunch: {selectedDentist.lunch.start} - {selectedDentist.lunch.end}</div>}
-              </div>
-            )}
           </div>
 
           <div className="form-group full-width">
