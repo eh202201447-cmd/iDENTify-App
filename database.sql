@@ -3,8 +3,7 @@ CREATE DATABASE IF NOT EXISTS `identify_app`;
 USE `identify_app`;
 
 -- DENTISTS TABLE
--- Added 'status' for real-time availability (Available/Busy/Off)
--- Added 'schedule' JSON for storing days, hours, breaks, and leave days
+-- Stores dentist profiles, current status, and working schedule
 CREATE TABLE IF NOT EXISTS `dentists` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
   `name` VARCHAR(255) NOT NULL,
@@ -14,9 +13,7 @@ CREATE TABLE IF NOT EXISTS `dentists` (
 );
 
 -- PATIENTS TABLE
--- Added 'parent_id' for family linking
--- Added 'xrays' LONGTEXT for storing Base64 images
--- Added 'created_at' for the Reports page (New Patients count)
+-- Stores patient personal info, vitals, and gallery images
 CREATE TABLE IF NOT EXISTS `patients` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
   `full_name` VARCHAR(255) NOT NULL,
@@ -28,13 +25,13 @@ CREATE TABLE IF NOT EXISTS `patients` (
   `medical_alerts` TEXT,
   `vitals` JSON,
   `parent_id` INT,
-  `xrays` LONGTEXT,
+  `xrays` LONGTEXT, -- Handles large base64 strings for general gallery
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (`parent_id`) REFERENCES `patients`(`id`) ON DELETE SET NULL
 );
 
 -- APPOINTMENTS TABLE
--- Added 'created_at' to track booking time vs appointment time
+-- Stores scheduled bookings
 CREATE TABLE IF NOT EXISTS `appointments` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
   `patient_id` INT,
@@ -50,6 +47,7 @@ CREATE TABLE IF NOT EXISTS `appointments` (
 );
 
 -- QUEUE TABLE
+-- Manages the live clinic flow (Walk-ins & Checked-in Appointments)
 CREATE TABLE IF NOT EXISTS `walk_in_queue` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
   `patient_id` INT,
@@ -65,6 +63,7 @@ CREATE TABLE IF NOT EXISTS `walk_in_queue` (
 );
 
 -- TOOTH CONDITIONS TABLE
+-- Stores the visual charting data (Red boxes, Blue circles, etc.)
 CREATE TABLE IF NOT EXISTS `tooth_conditions` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
   `patient_id` INT,
@@ -76,6 +75,7 @@ CREATE TABLE IF NOT EXISTS `tooth_conditions` (
 );
 
 -- TREATMENT TIMELINE TABLE
+-- Stores the specific history records displayed in the Mobile App
 CREATE TABLE IF NOT EXISTS `treatment_timeline` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
   `patient_id` INT,
@@ -84,11 +84,12 @@ CREATE TABLE IF NOT EXISTS `treatment_timeline` (
   `provider` VARCHAR(255),
   `procedure_text` TEXT,
   `notes` TEXT,
-  `image_url` VARCHAR(255),
+  `image_url` LONGTEXT, -- FIXED: Changed from VARCHAR(255) to LONGTEXT to support images
   FOREIGN KEY (`patient_id`) REFERENCES `patients`(`id`) ON DELETE CASCADE
 );
 
 -- MEDICATIONS TABLE
+-- Stores prescriptions
 CREATE TABLE IF NOT EXISTS `medications` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
   `patient_id` INT,
@@ -100,6 +101,7 @@ CREATE TABLE IF NOT EXISTS `medications` (
 );
 
 -- INITIAL DATA SEEDING
+-- Default dentists with schedules
 INSERT INTO `dentists` (`name`, `specialty`, `status`, `schedule`) VALUES
 ('Dr. Paul Zaragoza', 'General Dentist', 'Available', '{"days": [1,3,5], "operatingHours": {"start": "09:00", "end": "17:30"}, "lunch": {"start": "12:30", "end": "13:15"}, "breaks": [], "leaveDays": []}'),
 ('Dr. Erica Aquino', 'Orthodontist', 'Available', '{"days": [2,4], "operatingHours": {"start": "10:00", "end": "18:00"}, "lunch": {"start": "13:00", "end": "14:00"}, "breaks": [], "leaveDays": []}'),

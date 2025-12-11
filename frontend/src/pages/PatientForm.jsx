@@ -71,8 +71,8 @@ function PatientForm() {
   const [isXrayViewerOpen, setIsXrayViewerOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Form States - Timeline
-  const [timelineForm, setTimelineForm] = useState({ start_time: "", end_time: "", provider: "", notes: "" });
+  // Form States - Timeline (UPDATED: Added 'image' field)
+  const [timelineForm, setTimelineForm] = useState({ start_time: "", end_time: "", provider: "", notes: "", image: null });
 
   // Multi-Select for Timeline Procedure
   const [selectedTimelineServices, setSelectedTimelineServices] = useState([]);
@@ -222,6 +222,20 @@ function PatientForm() {
     });
   };
 
+  // Helper for timeline-specific upload
+  const handleTimelineImageUpload = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+    try {
+      const base64 = await convertToBase64(file);
+      setTimelineForm(prev => ({ ...prev, image: base64 }));
+      toast.success("Image attached to timeline entry");
+    } catch (e) {
+      toast.error("Failed to process image");
+    }
+  };
+
+  // Original bulk upload handler (for Patient Gallery)
   const handleUpload = async (event) => {
     const files = Array.from(event.target.files || []);
     const newFiles = [];
@@ -337,19 +351,28 @@ function PatientForm() {
 
     const procedureString = selectedTimelineServices.join(", ");
 
+    // UPDATED: Now sending image_url
     const payload = {
       ...timelineForm,
       procedure_text: procedureString,
       patient_id: id,
       provider: providerName,
-      start_time: timelineForm.start_time || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      start_time: timelineForm.start_time || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      image_url: timelineForm.image // Send the base64 image here
     };
+
     try {
       const newEntry = await api.addTreatmentTimelineEntry(payload);
       setTimelineEntries(prev => [...prev, newEntry]);
-      setTimelineForm({ start_time: "", end_time: "", provider: "", notes: "" });
+      // Reset form including image
+      setTimelineForm({ start_time: "", end_time: "", provider: "", notes: "", image: null });
       setSelectedTimelineServices([]);
-    } catch (error) { console.error("Failed to add timeline entry", error); }
+      // Clear file input manually if possible, or just let state handle it
+      document.getElementById("timeline-file-input").value = "";
+    } catch (error) {
+      console.error("Failed to add timeline entry", error);
+      toast.error("Failed to add timeline entry. Image might be too large.");
+    }
   };
 
   const deleteTimelineEntry = async (entryId) => {
@@ -562,6 +585,27 @@ function PatientForm() {
               </div>
             </div>
 
+            {/* NEW: ATTACH X-RAY TO TIMELINE */}
+            <div style={{ gridColumn: '1 / -1', marginTop: '8px', padding: '10px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+              <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: 'bold', color: '#475569' }}>
+                Attach X-ray/Image for Mobile App
+              </label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <input
+                  type="file"
+                  id="timeline-file-input"
+                  accept="image/*"
+                  onChange={handleTimelineImageUpload}
+                  style={{ fontSize: '13px' }}
+                />
+                {timelineForm.image && (
+                  <span style={{ fontSize: '12px', color: '#166534', fontWeight: 'bold', background: '#dcfce7', padding: '2px 8px', borderRadius: '4px' }}>
+                    ✓ Image Attached
+                  </span>
+                )}
+              </div>
+            </div>
+
             <button className="small-btn" onClick={addTimelineEntry}>Add Entry</button>
           </div>
 
@@ -570,6 +614,7 @@ function PatientForm() {
               <div key={entry.id} className="timeline-entry">
                 <div className="timeline-meta"><span>{entry.start_time} - {entry.end_time || "..."}</span><span>{entry.provider || "Unassigned"}</span></div>
                 <div>{entry.procedure_text}</div>
+                {entry.image_url && <div style={{ fontSize: '12px', color: '#0ea5e9', marginTop: '4px' }}>📎 Has attached image</div>}
                 <div className="timeline-entry-actions"><button className="small-btn danger" onClick={() => deleteTimelineEntry(entry.id)}>Delete</button></div>
               </div>
             ))}
@@ -599,7 +644,10 @@ function PatientForm() {
         </section>
 
         <section className="upload-section">
-          <h3 className="section-title">X-rays & Images</h3>
+          <h3 className="section-title">Patient X-ray Gallery</h3>
+          <p className="muted-text" style={{ fontSize: '13px', marginBottom: '8px' }}>
+            Images uploaded here are stored in the patient's general gallery. To show an image in the mobile app's records, use the uploader inside "Treatment Timeline" above.
+          </p>
           <input type="file" multiple accept="image/*" onChange={handleUpload} />
           <div className="thumbnail-grid">
             {uploadedFiles.length === 0 ? <div className="muted-text">No files uploaded yet.</div> : uploadedFiles.map((file, index) => (
