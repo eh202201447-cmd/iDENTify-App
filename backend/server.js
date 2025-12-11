@@ -14,12 +14,7 @@ const reportsRoutes = require("./routes/reports");
 
 const app = express();
 
-// UPDATED: Allow all origins. This is critical for the mobile app to connect.
-// Previously it was restricted to localhost:5173 only.
 app.use(cors()); 
-
-// UPDATED: Increase payload limit to 50mb to handle large X-ray images (Base64 strings)
-// Without this, large image uploads will fail or result in empty data.
 app.use(express.json({ limit: "5000mb" }));
 app.use(express.urlencoded({ limit: "5000mb", extended: true }));
 
