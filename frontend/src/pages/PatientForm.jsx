@@ -128,16 +128,29 @@ function PatientForm() {
 
         const patientData = await api.getPatientById(id);
 
+        // --- FIX: SEPARATE ALERTS FROM RELATIONSHIP ---
         let alerts = [];
+        let relationshipLabel = "";
+
         if (patientData.medical_alerts) {
-          alerts = typeof patientData.medical_alerts === "string"
+          const rawAlerts = typeof patientData.medical_alerts === "string"
             ? patientData.medical_alerts.split(",")
             : patientData.medical_alerts;
+
+          // Filter real alerts
+          alerts = rawAlerts.filter(a => !a.trim().startsWith("Relation:"));
+
+          // Find relationship tag
+          const relTag = rawAlerts.find(a => a.trim().startsWith("Relation:"));
+          if (relTag) {
+            relationshipLabel = relTag.replace("Relation:", "").trim();
+          }
         }
 
         const fullPatientData = {
           ...patientData,
           medicalAlerts: alerts,
+          relationship: relationshipLabel, // Stored separately for display
           vitals: patientData.vitals || {},
           xrays: patientData.xrays || []
         };
@@ -149,9 +162,7 @@ function PatientForm() {
           setUploadedFiles(fullPatientData.xrays);
         }
 
-        // [FIXED] VITALS LOGIC
         // Only load old vitals if we are NOT starting a new appointment.
-        // If linkedAppointment exists, we want BLANK vitals for the new visit.
         if (!linkedAppointment && fullPatientData.vitals) {
           setVitals(prev => ({ ...prev, ...fullPatientData.vitals }));
           if (fullPatientData.vitals.temp && fullPatientData.vitals.temp.includes("F")) {
@@ -164,14 +175,12 @@ function PatientForm() {
         // Set Dentist ID
         setSelectedDentistId(prevId => {
           if (prevId) return prevId;
-          // If viewing old record, use saved dentist
           if (!linkedAppointment && fullPatientData.vitals?.dentist_id) return fullPatientData.vitals.dentist_id;
-          // If new appointment, prefer the appointment's dentist
           if (linkedAppointment?.dentist_id) return linkedAppointment.dentist_id;
           return "";
         });
 
-        // Load Persistent Tooth Chart (Chart History always loads)
+        // Load Persistent Tooth Chart
         const conditions = await api.getToothConditions(id);
         const newBoxMarks = Array(64).fill("");
         const newCircleShades = Array(52).fill(false);
@@ -204,7 +213,7 @@ function PatientForm() {
     };
 
     loadData();
-  }, [id, linkedAppointment]); // Added linkedAppointment dependency
+  }, [id, linkedAppointment]);
 
   const updateVitals = (field, value) => setVitals(prev => ({ ...prev, [field]: value }));
 
@@ -523,7 +532,6 @@ function PatientForm() {
 
   const panelTitle = selected.boxKind === "treatment" ? "Treatment" : selected.boxKind === "condition" ? "Condition" : "Legend";
 
-  // Dynamic Options
   const panelOptions = selected.boxKind === "treatment" ? treatmentOptions : selected.boxKind === "condition" ? conditionOptions : [];
 
   if (!patient) return <div>Loading...</div>;
@@ -545,6 +553,11 @@ function PatientForm() {
               <p><strong>Age:</strong> {patient.displayAge}</p>
               <p><strong>Sex:</strong> {patient.gender}</p>
               <p><strong>#Number:</strong> {patient.contact_number}</p>
+
+              {/* NEW: Relationship Label */}
+              {patient.relationship && (
+                <p><strong>Relationship:</strong> <span style={{ color: '#007bff', fontWeight: 'bold' }}>{patient.relationship}</span></p>
+              )}
             </div>
           </section>
 

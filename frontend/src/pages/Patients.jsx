@@ -72,7 +72,6 @@ function Patients() {
   }, [patients, allSearch]);
 
   // --- RENDER TABLE COMPONENT ---
-  // Reuses the existing 'patients-table' class to maintain design
   const PatientTable = ({ data, emptyMessage }) => (
     <div className="patients-table-container">
       <table className="patients-table">
@@ -95,13 +94,19 @@ function Patients() {
                 <td>{p.age || "--"}</td>
                 <td style={{ color: "#666" }}>{getLastProcedure(p.id)}</td>
                 <td style={{ color: "#666", fontSize: '0.9rem' }}>
-                  {p.medicalAlerts?.length > 0 ? (
-                    <span style={{ color: "#d32f2f", backgroundColor: "#ffebee", padding: "2px 6px", borderRadius: "4px" }}>
-                      {p.medicalAlerts[0]}
-                    </span>
-                  ) : (
-                    "--"
-                  )}
+                  {(() => {
+                    // FIX: Filter out "Relation:" tags so they don't look like diseases
+                    const realAlerts = (p.medicalAlerts || []).filter(a => !a.includes("Relation:"));
+
+                    if (realAlerts.length > 0) {
+                      return (
+                        <span style={{ color: "#d32f2f", backgroundColor: "#ffebee", padding: "2px 6px", borderRadius: "4px" }}>
+                          {realAlerts[0]}
+                        </span>
+                      );
+                    }
+                    return "--";
+                  })()}
                 </td>
                 <td style={{ textAlign: 'center' }}>
                   <button
