@@ -7,6 +7,7 @@ import AppLayout from "./layout/AppLayout.jsx";
 const Dashboard = lazy(() => import("./pages/Dashboard.jsx"));
 const Appointments = lazy(() => import("./pages/Appointments.jsx"));
 const Queue = lazy(() => import("./pages/Queue.jsx"));
+const History = lazy(() => import("./pages/History.jsx")); // IMPORT HISTORY
 const Reports = lazy(() => import("./pages/Reports.jsx"));
 const Dentists = lazy(() => import("./pages/Dentists.jsx"));
 const PatientForm = lazy(() => import("./pages/PatientForm.jsx"));
@@ -52,6 +53,7 @@ function App() {
         {/* APP PAGES */}
         <Route path="appointments" element={<Suspense fallback={<div>Loading appointments…</div>}><Appointments /></Suspense>} />
         <Route path="queue" element={<Suspense fallback={<div>Loading queue…</div>}><Queue /></Suspense>} />
+        <Route path="history" element={<Suspense fallback={<div>Loading history…</div>}><History /></Suspense>} /> {/* NEW ROUTE */}
         <Route path="reports" element={<Suspense fallback={<div>Loading reports…</div>}><Reports /></Suspense>} />
         <Route path="dentists" element={<Suspense fallback={<div>Loading dentists…</div>}><Dentists /></Suspense>} />
         <Route path="patients" element={<Suspense fallback={<div>Loading patients…</div>}><Patients /></Suspense>} />

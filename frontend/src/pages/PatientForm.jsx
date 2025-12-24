@@ -9,6 +9,74 @@ import useAppStore from "../store/useAppStore";
 import toast from "react-hot-toast";
 import { dentalServices } from "../data/services";
 
+// --- NEW COMPONENT: 5-SURFACE TOOTH (SVG) ---
+const Tooth5Surface = ({ toothNumber, segments, onSegmentClick }) => {
+	// Colors based on status
+	const getColor = (status) => {
+		switch (status) {
+			case "issue": return "#e03131"; // Red
+			case "planned": return "#1a4e9c"; // Blue
+			case "completed": return "#2f9e44"; // Green
+			default: return "transparent";
+		}
+	};
+
+	// Helper to handle click
+	const handleClick = (e, part) => {
+		e.stopPropagation(); // Prevent bubbling if needed
+		onSegmentClick(part);
+	};
+
+	return (
+		<div className="tc-circle-unit">
+			<div className="tc-circle-wrapper">
+				<svg viewBox="0 0 100 100" className="tc-tooth-svg">
+					{/* TOP (Triangle-ish) */}
+					<path
+						d="M 0,0 L 100,0 L 50,50 Z"
+						fill={getColor(segments?.top)}
+						className="tooth-poly"
+						onClick={(e) => handleClick(e, 'top')}
+					/>
+					{/* RIGHT */}
+					<path
+						d="M 100,0 L 100,100 L 50,50 Z"
+						fill={getColor(segments?.right)}
+						className="tooth-poly"
+						onClick={(e) => handleClick(e, 'right')}
+					/>
+					{/* BOTTOM */}
+					<path
+						d="M 100,100 L 0,100 L 50,50 Z"
+						fill={getColor(segments?.bottom)}
+						className="tooth-poly"
+						onClick={(e) => handleClick(e, 'bottom')}
+					/>
+					{/* LEFT */}
+					<path
+						d="M 0,100 L 0,0 L 50,50 Z"
+						fill={getColor(segments?.left)}
+						className="tooth-poly"
+						onClick={(e) => handleClick(e, 'left')}
+					/>
+					{/* CENTER (Circle on top) */}
+					<circle
+						cx="50"
+						cy="50"
+						r="25"
+						fill={getColor(segments?.center) || "white"} // Default white center if no status, but allows color
+						stroke="#000"
+						strokeWidth="2" // Slight border to separate center
+						className="tooth-poly"
+						onClick={(e) => handleClick(e, 'center')}
+					/>
+				</svg>
+			</div>
+			<span className="tc-number">{toothNumber}</span>
+		</div>
+	);
+};
+
 function PatientForm() {
 	const navigate = useNavigate();
 	const { id } = useParams();
@@ -59,7 +127,10 @@ function PatientForm() {
 
 	// Chart & List States
 	const [boxMarks, setBoxMarks] = useState(Array(64).fill(""));
-	const [circleShades, setCircleShades] = useState(Array(52).fill(false));
+	// Removed old circleShades array
+	// New State for 5-segment tooth data: Key = cellKey (e.g., "circle-15"), Value = object { top, bottom, left, right, center }
+	const [toothSegments, setToothSegments] = useState({});
+
 	const [toothStatuses, setToothStatuses] = useState({});
 	const [timelineEntries, setTimelineEntries] = useState([]);
 	const [medications, setMedications] = useState([]);
@@ -128,7 +199,6 @@ function PatientForm() {
 
 				const patientData = await api.getPatientById(id);
 
-				// --- FIX: SEPARATE ALERTS FROM RELATIONSHIP ---
 				let alerts = [];
 				let relationshipLabel = "";
 
@@ -137,10 +207,8 @@ function PatientForm() {
 						? patientData.medical_alerts.split(",")
 						: patientData.medical_alerts;
 
-					// Filter real alerts
 					alerts = rawAlerts.filter(a => !a.trim().startsWith("Relation:"));
 
-					// Find relationship tag
 					const relTag = rawAlerts.find(a => a.trim().startsWith("Relation:"));
 					if (relTag) {
 						relationshipLabel = relTag.replace("Relation:", "").trim();
@@ -150,7 +218,7 @@ function PatientForm() {
 				const fullPatientData = {
 					...patientData,
 					medicalAlerts: alerts,
-					relationship: relationshipLabel, // Stored separately for display
+					relationship: relationshipLabel,
 					vitals: patientData.vitals || {},
 					xrays: patientData.xrays || []
 				};
@@ -162,7 +230,6 @@ function PatientForm() {
 					setUploadedFiles(fullPatientData.xrays);
 				}
 
-				// Only load old vitals if we are NOT starting a new appointment.
 				if (!linkedAppointment && fullPatientData.vitals) {
 					setVitals(prev => ({ ...prev, ...fullPatientData.vitals }));
 					if (fullPatientData.vitals.temp && fullPatientData.vitals.temp.includes("F")) {
@@ -172,7 +239,6 @@ function PatientForm() {
 					}
 				}
 
-				// Set Dentist ID
 				setSelectedDentistId(prevId => {
 					if (prevId) return prevId;
 					if (!linkedAppointment && fullPatientData.vitals?.dentist_id) return fullPatientData.vitals.dentist_id;
@@ -183,21 +249,28 @@ function PatientForm() {
 				// Load Persistent Tooth Chart
 				const conditions = await api.getToothConditions(id);
 				const newBoxMarks = Array(64).fill("");
-				const newCircleShades = Array(52).fill(false);
+				const newToothSegments = {};
 				const newToothStatuses = {};
 
 				conditions.forEach(c => {
 					const [type, indexStr] = c.cell_key.split("-");
 					const index = parseInt(indexStr, 10);
 					if (!isNaN(index)) {
-						if (type === "box") newBoxMarks[index] = c.condition_code || "";
-						if (type === "circle") newCircleShades[index] = Boolean(c.is_shaded);
-						newToothStatuses[c.cell_key] = c.status;
+						if (type === "box") {
+							newBoxMarks[index] = c.condition_code || "";
+							newToothStatuses[c.cell_key] = c.status;
+						}
+						if (type === "circle") {
+							// LOAD SEGMENTS
+							if (c.segments) {
+								newToothSegments[c.cell_key] = typeof c.segments === 'string' ? JSON.parse(c.segments) : c.segments;
+							}
+						}
 					}
 				});
 
 				setBoxMarks(newBoxMarks);
-				setCircleShades(newCircleShades);
+				setToothSegments(newToothSegments);
 				setToothStatuses(newToothStatuses);
 
 				// Load History Lists
@@ -347,19 +420,46 @@ function PatientForm() {
 		navigate("/app/queue");
 	};
 
-	const setCellStatus = (cellKey) => {
-		if (!cellKey) return;
-		const newStatus = { ...toothStatuses, [cellKey]: activeStatus };
-		setToothStatuses(newStatus);
-		const [type, indexStr] = cellKey.split("-");
-		const index = parseInt(indexStr, 10);
-		api.upsertToothCondition({
-			patient_id: id,
-			cell_key: cellKey,
-			condition_code: type === 'box' ? boxMarks[index] : null,
-			status: activeStatus,
-			is_shaded: type === 'circle' ? circleShades[index] : false,
-		});
+	// --- NEW HANDLER FOR 5-PART TOOTH ---
+	const handleSegmentClick = async (cellKey, part) => {
+		const currentSegments = toothSegments[cellKey] || {};
+
+		// Toggle logic: If current part is already the active status, clear it. Else set it.
+		// Or if different status, overwrite.
+		// If you want to toggle off:
+		const newStatus = currentSegments[part] === activeStatus ? null : activeStatus;
+
+		const updatedSegments = {
+			...currentSegments,
+			[part]: newStatus
+		};
+
+		// Update State Optimistically
+		setToothSegments(prev => ({
+			...prev,
+			[cellKey]: updatedSegments
+		}));
+
+		try {
+			// Update Backend
+			await api.upsertToothCondition({
+				patient_id: id,
+				cell_key: cellKey,
+				condition_code: null,
+				status: "mixed", // Just a placeholder, segments contain real data
+				is_shaded: false, // Legacy
+				segments: updatedSegments // SEND NEW DATA
+			});
+		} catch (error) {
+			console.error("Failed to save tooth segment:", error);
+			toast.error("Failed to save tooth. Please check database connection.");
+			// Optionally revert state here if strict data integrity is needed
+		}
+	};
+
+	// Handlers for Boxes remain same
+	const setBoxStatus = (cellKey) => {
+		// Only used by code apply logic for boxes
 	};
 
 	const updateTimelineForm = (field, value) => setTimelineForm((prev) => ({ ...prev, [field]: value }));
@@ -432,20 +532,7 @@ function PatientForm() {
 		setSelected({ kind: "box", index: idx, boxKind, cellKey: `box-${idx}` });
 		setIsPanelOpen(true);
 	};
-	const toggleCircleShade = (idx) => {
-		const cellKey = `circle-${idx}`;
-		const newCircleShades = circleShades.map((v, i) => (i === idx ? !v : v));
-		setCircleShades(newCircleShades);
-		const [type, indexStr] = cellKey.split("-");
-		const index = parseInt(indexStr, 10);
-		api.upsertToothCondition({
-			patient_id: id,
-			cell_key: cellKey,
-			condition_code: null,
-			status: activeStatus,
-			is_shaded: !circleShades[index],
-		});
-	};
+
 	const closePanel = () => { setIsPanelOpen(false); setSelected({ kind: null, index: null, boxKind: null, cellKey: null }); };
 	const handleContextMenu = (e, cellKey, boxKind) => { e.preventDefault(); setContextMenu({ x: e.pageX, y: e.pageY, cellKey, boxKind }); setIsContextMenuOpen(true); };
 	const closeContextMenu = () => { setIsContextMenuOpen(false); setContextMenu(null); };
@@ -463,7 +550,9 @@ function PatientForm() {
 				status: activeStatus,
 				is_shaded: false,
 			});
-			setCellStatus(selected.cellKey);
+			// Update status visually for boxes
+			const newStatus = { ...toothStatuses, [selected.cellKey]: activeStatus };
+			setToothStatuses(newStatus);
 		}
 		closePanel();
 	};
@@ -485,6 +574,8 @@ function PatientForm() {
 			</div>
 		);
 	};
+
+	// UPDATED RENDER GROUP WITH NEW TOOTH COMPONENT
 	const renderCircleGroup = (rows, startIndex) => {
 		let runningIndex = startIndex;
 		return rows.map((rowNumbers, rowIdx) => (
@@ -492,18 +583,23 @@ function PatientForm() {
 				{rowNumbers.map((num) => {
 					const idx = runningIndex;
 					runningIndex += 1;
-					const shaded = circleShades[idx];
 					const cellKey = `circle-${idx}`;
-					const statusClass = toothStatuses[cellKey] ? ` tc-status-${toothStatuses[cellKey]}` : "";
+					const segments = toothSegments[cellKey] || {};
+
 					return (
-						<button key={num} className={`tc-circle-unit${shaded ? " tc-has-mark" : ""}${statusClass}`} onClick={() => toggleCircleShade(idx)} onContextMenu={(e) => handleContextMenu(e, cellKey, "condition")} onDoubleClick={() => { toggleCircleShade(idx); }}><div className="tc-circle"></div><span className="tc-number">{num}</span></button>
+						<Tooth5Surface
+							key={num}
+							toothNumber={num}
+							segments={segments}
+							onSegmentClick={(part) => handleSegmentClick(cellKey, part)}
+						/>
 					);
 				})}
 			</div>
 		));
 	};
 
-	// FULL OPTIONS LISTS (Restored)
+	// FULL OPTIONS LISTS
 	const treatmentOptions = [
 		{ code: "FV", label: "Fluoride Varnish" },
 		{ code: "FG", label: "Fluoride Gel" },
@@ -553,8 +649,6 @@ function PatientForm() {
 							<p><strong>Age:</strong> {patient.displayAge}</p>
 							<p><strong>Sex:</strong> {patient.gender}</p>
 							<p><strong>#Number:</strong> {patient.contact_number}</p>
-
-							{/* NEW: Relationship Label */}
 							{patient.relationship && (
 								<p><strong>Relationship:</strong> <span style={{ color: '#007bff', fontWeight: 'bold' }}>{patient.relationship}</span></p>
 							)}
@@ -611,7 +705,7 @@ function PatientForm() {
 				<section className="oral-section">
 					<h3 className="section-title">Oral Health Condition</h3>
 					<div className="status-palette">{["issue", "planned", "completed"].map((status) => (<button key={status} className={`status-pill${activeStatus === status ? " active" : ""}`} onClick={() => setActiveStatus(status)}><span className={`status-dot ${status}`}></span>{status === "issue" ? "Issue (red)" : status === "planned" ? "Planned (blue)" : "Completed (green)"}</button>))}</div>
-					<div className="tooth-chart-container"><div className="tooth-inner-panel"><div className="tc-group"><div className="tc-row-header">Top Layer (Treatment / Condition)</div>{renderBoxRow(0)}{renderBoxRow(1)}</div><div className="tc-group"><div className="tc-row-header">Condition (Circles only)</div>{renderCircleGroup(upperConditionRows, 0)}{renderCircleGroup(lowerConditionRows, 26)}</div><div className="tc-group"><div className="tc-row-header">Bottom Layer (Condition / Treatment)</div>{renderBoxRow(2)}{renderBoxRow(3)}<div className="tc-small-hint">Click any box to select a code, or click a circle to shade it.</div></div></div></div>
+					<div className="tooth-chart-container"><div className="tooth-inner-panel"><div className="tc-group"><div className="tc-row-header">Top Layer (Treatment / Condition)</div>{renderBoxRow(0)}{renderBoxRow(1)}</div><div className="tc-group"><div className="tc-row-header">Condition (Circles only)</div>{renderCircleGroup(upperConditionRows, 0)}{renderCircleGroup(lowerConditionRows, 26)}</div><div className="tc-group"><div className="tc-row-header">Bottom Layer (Condition / Treatment)</div>{renderBoxRow(2)}{renderBoxRow(3)}<div className="tc-small-hint">Click any segment of the circle to mark its condition.</div></div></div></div>
 				</section>
 
 				<section className="timeline-section">

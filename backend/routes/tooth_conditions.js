@@ -4,40 +4,56 @@ const db = require("../db");
 
 // Get all tooth conditions for a patient
 router.get("/:patient_id", async (req, res) => {
-  const { patient_id } = req.params;
-  const [rows] = await db.query(
-    "SELECT * FROM tooth_conditions WHERE patient_id = ?",
-    [patient_id]
-  );
-  res.json(rows);
+  try {
+    const { patient_id } = req.params;
+    const [rows] = await db.query(
+      "SELECT * FROM tooth_conditions WHERE patient_id = ?",
+      [patient_id]
+    );
+    res.json(rows);
+  } catch (error) {
+    console.error("Error fetching tooth conditions:", error);
+    res.status(500).json({ message: "Failed to fetch tooth conditions" });
+  }
 });
 
 // Add or update a tooth condition
 router.post("/", async (req, res) => {
-  const { patient_id, cell_key, condition_code, status, is_shaded } = req.body;
+  try {
+    const { patient_id, cell_key, condition_code, status, is_shaded, segments } = req.body;
 
-  // This is an "upsert" logic. If a condition for the cell_key already exists, it will be updated.
-  // Otherwise, it will be inserted.
-  const [existing] = await db.query(
-    "SELECT * FROM tooth_conditions WHERE patient_id = ? AND cell_key = ?",
-    [patient_id, cell_key]
-  );
+    console.log(`Saving condition for ${cell_key}:`, segments); // Debug log
 
-  if (existing.length > 0) {
-    const [result] = await db.query(
-      `UPDATE tooth_conditions 
-       SET condition_code = ?, status = ?, is_shaded = ?
-       WHERE id = ?`,
-      [condition_code, status, is_shaded, existing[0].id]
+    // Check if record exists
+    const [existing] = await db.query(
+      "SELECT * FROM tooth_conditions WHERE patient_id = ? AND cell_key = ?",
+      [patient_id, cell_key]
     );
-    res.json({ id: existing[0].id, message: "Tooth condition updated" });
-  } else {
-    const [result] = await db.query(
-      `INSERT INTO tooth_conditions (patient_id, cell_key, condition_code, status, is_shaded)
-       VALUES (?, ?, ?, ?, ?)`,
-      [patient_id, cell_key, condition_code, status, is_shaded]
-    );
-    res.status(201).json({ id: result.insertId, message: "Tooth condition created" });
+
+    // Convert segments object to JSON string for storage
+    const segmentsJson = segments ? JSON.stringify(segments) : null;
+
+    if (existing.length > 0) {
+      // UPDATE existing record
+      await db.query(
+        `UPDATE tooth_conditions 
+         SET condition_code = ?, status = ?, is_shaded = ?, segments = ?
+         WHERE id = ?`,
+        [condition_code, status, is_shaded, segmentsJson, existing[0].id]
+      );
+      res.json({ id: existing[0].id, message: "Tooth condition updated" });
+    } else {
+      // INSERT new record
+      const [result] = await db.query(
+        `INSERT INTO tooth_conditions (patient_id, cell_key, condition_code, status, is_shaded, segments)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [patient_id, cell_key, condition_code, status, is_shaded, segmentsJson]
+      );
+      res.status(201).json({ id: result.insertId, message: "Tooth condition created" });
+    }
+  } catch (error) {
+    console.error("DATABASE ERROR saving tooth condition:", error.message);
+    res.status(500).json({ message: "Failed to save tooth. " + error.message });
   }
 });
 

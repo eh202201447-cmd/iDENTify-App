@@ -86,8 +86,6 @@
   object-fit: cover;
 }
 
-
-
 .section-title {
   font-size: 18px;
   margin-bottom: 8px;
@@ -319,64 +317,69 @@
   flex-wrap: nowrap;
 }
 
+/* =========================================
+   UPDATED 5-SURFACE TOOTH STYLES (SVG)
+   ========================================= */
+
 .tc-circle-unit {
   display: flex;
   flex-direction: column;
   align-items: center;
-  cursor: pointer;
-  background: transparent;
+  background: none;
   border: none;
+  padding: 0;
 }
 
-.tc-circle {
-  width: 28px;
-  height: 28px;
+.tc-circle-wrapper {
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   border: 2px solid #000;
   position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  overflow: hidden;
+  background: white;
+  cursor: pointer;
 }
 
-.tc-circle::before,
-.tc-circle::after {
-  content: "";
-  position: absolute;
-  background: #000;
-}
-
-.tc-circle::before {
-  width: 2px;
-  height: 100%;
-  left: 50%;
-  top: 0;
-  transform: translateX(-50%);
-}
-
-.tc-circle::after {
+.tc-tooth-svg {
   width: 100%;
-  height: 2px;
-  left: 0;
-  top: 50%;
-  transform: translateY(-50%);
+  height: 100%;
+  display: block;
 }
 
-.tc-circle-mark {
-  font-size: 11px;
-  font-weight: 600;
-  background: #ffffff;
-  padding: 1px 3px;
-  border-radius: 3px;
+.tooth-poly {
+  stroke: #000;
+  stroke-width: 0.5;
+  transition: fill 0.2s;
+  cursor: pointer;
+}
+
+/* FIX: When the center circle is 'transparent' (no status), 
+  force it to white so it hides the intersecting lines underneath.
+*/
+.tc-tooth-svg circle[fill="transparent"] {
+  fill: #ffffff !important;
+}
+
+/* Ensure the border of the center circle is visible */
+.tc-tooth-svg circle {
+  stroke-width: 1.5px !important;
+}
+
+/* Hover effect for the white circle */
+.tc-tooth-svg circle[fill="transparent"]:hover {
+  fill: #f1f5f9 !important;
+}
+
+/* Hover effect for other segments */
+.tooth-poly:hover {
+  fill: #f1f5f9; 
 }
 
 .tc-number {
   margin-top: 6px;
   font-size: 10px;
-}
-
-.tc-circle-unit.tc-has-mark .tc-circle {
-  background: #dbeafe;
+  font-weight: 600;
 }
 
 .tc-small-hint {
@@ -384,6 +387,8 @@
   font-size: 12px;
   color: #606f7b;
 }
+
+/* ========================================= */
 
 .attachment-section {
   margin-top: 20px;
@@ -486,7 +491,6 @@
   background: #e4eef8;
 }
 
-/* Backwards-compatible aliases for previous class names used in the JSX */
 .side-panel-content {
   padding: 8px 0;
 }
@@ -522,7 +526,6 @@
   font-size: 13px;
   color: #4a5565;
 }
-
 
 .code-option-code {
   font-weight: bold;
