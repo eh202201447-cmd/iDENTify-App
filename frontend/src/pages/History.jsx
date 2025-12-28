@@ -44,18 +44,20 @@ function History() {
             queue
                 .filter((item) => item.status === "Done")
                 .map((item, index) => {
-                    const patient = patients.find((p) => p.id === item.patient_id);
-                    const patientName = patient ? (patient.name || patient.full_name) : (item.full_name || "Unknown");
+                    // [FIX] Use String() for safe ID comparison
+                    const patient = patients.find((p) => String(p.id) === String(item.patient_id));
+                    const patientName = patient ? (patient.full_name || patient.name) : (item.full_name || "Unknown");
 
-                    const dentist = dentists.find((d) => d.id === item.dentist_id);
+                    const dentist = dentists.find((d) => String(d.id) === String(item.dentist_id));
                     const dentistName = dentist ? dentist.name : (item.dentist_name || "Unassigned");
 
                     // Resolve Procedure/Reason
                     let procedureInfo = item.notes || "-";
                     if (item.appointment_id) {
-                        const linkedAppt = appointments.find(a => a.id === item.appointment_id);
-                        if (linkedAppt && linkedAppt.reason) {
-                            procedureInfo = linkedAppt.reason;
+                        const linkedAppt = appointments.find(a => String(a.id) === String(item.appointment_id));
+                        if (linkedAppt) {
+                            // [FIX] Check both 'procedure' and 'reason' fields
+                            procedureInfo = linkedAppt.procedure || linkedAppt.reason || item.notes || "-";
                         }
                     } else if (item.source === 'walk-in' && item.notes) {
                         procedureInfo = item.notes;
@@ -66,9 +68,6 @@ function History() {
 
                     return {
                         ...item,
-                        // We will re-assign numbers after sorting if you want them strictly chronological 1..N
-                        // or just keep index + 1 based on current array. 
-                        // Usually history tables don't need a sequential # ID, but we can keep it.
                         rawDate: dateObj,
                         name: patientName,
                         assignedDentist: dentistName,
@@ -100,7 +99,8 @@ function History() {
     // -------------------------
 
     const handleUpdate = (queueItem) => {
-        const fullPatientData = patients.find(p => p.id === queueItem.patient_id);
+        // [FIX] Use String() for safe ID comparison to ensure we find the patient object
+        const fullPatientData = patients.find(p => String(p.id) === String(queueItem.patient_id));
 
         const appointmentPayload = {
             ...queueItem,
@@ -113,7 +113,7 @@ function History() {
             state: {
                 dentistId: queueItem.dentist_id,
                 status: queueItem.status,
-                patientData: fullPatientData,
+                patientData: fullPatientData, // This carries the Vitals to the next screen
                 appointment: appointmentPayload
             }
         });
@@ -192,7 +192,7 @@ function History() {
                                             className="action-btn update-btn"
                                             onClick={() => handleUpdate(item)}
                                         >
-                                            Update
+                                            View / Update
                                         </button>
                                         <button
                                             className="action-btn delete-btn"

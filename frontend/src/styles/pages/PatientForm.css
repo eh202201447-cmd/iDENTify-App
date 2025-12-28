@@ -1,8 +1,13 @@
+/* =========================================
+   PAGE LAYOUT & WRAPPER
+   ========================================= */
 .patient-form-page {
   margin-left: 360px;
   padding: 40px 70px;
   min-width: 0;
   overflow-x: hidden;
+  background-color: #f8fafc;
+  min-height: 100vh;
 }
 
 .patient-form-tabs {
@@ -45,6 +50,8 @@
   min-width: 0;
   padding: 2rem;
   background-color: #fff;
+  border-radius: 12px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
 }
 
 .context-menu {
@@ -54,6 +61,7 @@
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
   padding: 1rem;
   z-index: 1001;
+  border-radius: 8px;
 }
 
 .thumbnail-grid {
@@ -89,8 +97,13 @@
 .section-title {
   font-size: 18px;
   margin-bottom: 8px;
+  color: #334155;
+  font-weight: 600;
 }
 
+/* =========================================
+   PATIENT & DENTIST INFO CARDS
+   ========================================= */
 .patient-details-card,
 .dentist-details-card {
   min-width: 0;
@@ -111,6 +124,20 @@
   overflow-wrap: break-word;
 }
 
+.patient-info-card, 
+.dentist-details-card {
+  min-width: 0; 
+  overflow-wrap: break-word;
+}
+
+.patient-info-fields {
+  background: white;
+  border-radius: 16px;
+  padding: 20px 24px;
+  border: 2px solid #c5d8ea;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.05);
+}
+
 .dentist-row {
   background: transparent;
 }
@@ -122,8 +149,104 @@
   border-radius: 8px;
   border: 2px solid #c5d8ea;
   font-size: 14px;
+  background: white;
 }
 
+.pill-input-input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 0.95rem;
+  background: #f8fafc;
+}
+
+/* =========================================
+   SEARCHABLE INPUT (AUTOCOMPLETE)
+   ========================================= */
+.searchable-input-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.searchable-input-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: white;
+  border: 1px solid #c5d8ea;
+  border-radius: 8px;
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 50;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  margin-top: 4px;
+  list-style: none;
+  padding: 0;
+}
+
+.searchable-input-dropdown li {
+  padding: 10px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid #f1f5f9;
+  font-size: 0.9rem;
+  color: #334155;
+}
+
+.searchable-input-dropdown li:hover {
+  background-color: #f0f9ff;
+  color: #0ea5e9;
+}
+
+.searchable-input-dropdown li:last-child {
+  border-bottom: none;
+}
+
+/* =========================================
+   MEDICAL ALERTS & HISTORY SECTION
+   ========================================= */
+.medical-alert-input-group {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.alert-chip {
+    background: #fee2e2;
+    color: #b91c1c;
+    padding: 6px 12px;
+    border-radius: 16px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: 1px solid #fca5a5;
+    margin-right: 8px;
+    margin-bottom: 8px;
+}
+
+.alert-chip button {
+    background: none;
+    border: none;
+    color: #b91c1c;
+    font-weight: bold;
+    cursor: pointer;
+    font-size: 1.1rem;
+    line-height: 1;
+    padding: 0 2px;
+    display: flex;
+    align-items: center;
+}
+
+.alert-chip button:hover {
+    color: #7f1d1d;
+}
+
+/* =========================================
+   TIMELINE, MEDICATION, UPLOAD SECTIONS
+   ========================================= */
 .timeline-section,
 .medication-section,
 .upload-section {
@@ -176,6 +299,9 @@
   flex-wrap: wrap;
 }
 
+/* =========================================
+   STATUS PALETTE
+   ========================================= */
 .status-palette {
   display: flex;
   gap: 10px;
@@ -206,30 +332,17 @@
   display: inline-block;
 }
 
-.status-dot.problem {
-  background: #e03131;
-}
+.status-dot.issue { background: #e03131; }
+.status-dot.planned { background: #1a4e9c; }
+.status-dot.completed { background: #2f9e44; }
 
-.status-dot.planned {
-  background: #1a4e9c;
-}
+.tc-status-issue { box-shadow: inset 0 0 0 2px #e03131; }
+.tc-status-planned { box-shadow: inset 0 0 0 2px #1a4e9c; }
+.tc-status-completed { box-shadow: inset 0 0 0 2px #2f9e44; }
 
-.status-dot.completed {
-  background: #2f9e44;
-}
-
-.tc-status-problem {
-  box-shadow: inset 0 0 0 2px #e03131;
-}
-
-.tc-status-planned {
-  box-shadow: inset 0 0 0 2px #1a4e9c;
-}
-
-.tc-status-completed {
-  box-shadow: inset 0 0 0 2px #2f9e44;
-}
-
+/* =========================================
+   VITAL SIGNS
+   ========================================= */
 .vital-signs {
   margin-top: 24px;
 }
@@ -249,6 +362,9 @@
   min-width: 120px;
 }
 
+/* =========================================
+   ORAL HEALTH CHART (COMPRESSED GRID)
+   ========================================= */
 .oral-section {
   margin-top: 20px;
   margin-bottom: 24px;
@@ -258,7 +374,8 @@
   background: white;
   border-radius: 16px;
   border: 2px solid #c5d8ea;
-  padding: 20px 22px;
+  /* Reduced padding for compression */
+  padding: 16px 18px; 
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.05);
   overflow-x: auto;
 }
@@ -266,38 +383,44 @@
 .tooth-inner-panel {
   border-radius: 18px;
   border: 2px solid #5a8ebf;
-  padding: 18px 24px 20px;
+  /* Reduced padding inside border */
+  padding: 14px 16px 16px; 
   min-width: 800px;
+  /* Flex column for vertical flow */
+  display: flex;
+  flex-direction: column;
 }
 
 .tc-group {
-  margin-bottom: 22px;
+  /* Reduced margin between Top/Bottom jaw groups */
+  margin-bottom: 14px; 
 }
 
 .tc-row-header {
-  font-size: 15px;
+  font-size: 13px; /* Smaller header font */
   font-weight: 600;
-  margin-bottom: 10px;
+  margin-bottom: 6px; /* Tighter header spacing */
 }
 
+/* --- GRID SYSTEM: 16 COLUMNS --- */
 .tc-box-row {
-  display: flex;
-  justify-content: center;
-  gap: 12px;
-  margin-bottom: 10px;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(16, 1fr);
+  gap: 2px; /* Very tight gap */
+  margin-bottom: 4px; /* Tight vertical space between boxes and teeth */
+  justify-items: center;
 }
 
 .tc-box-cell {
-  width: 28px;
-  height: 28px;
+  width: 24px; /* Compressed box size */
+  height: 24px;
   border-radius: 4px;
   border: 2px solid #000;
   background: #ffffff;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
+  font-size: 10px; /* Smaller font */
   cursor: pointer;
 }
 
@@ -310,17 +433,21 @@
 }
 
 .tc-circle-row {
-  display: flex;
-  justify-content: center;
-  gap: 14px;
-  margin-bottom: 16px;
-  flex-wrap: nowrap;
+  display: grid;
+  grid-template-columns: repeat(16, 1fr);
+  gap: 2px; /* Very tight gap */
+  margin-bottom: 10px; /* Tight vertical space */
+  justify-items: center;
+}
+
+/* Deciduous Row Offset (Starts at column 4) */
+.tc-deciduous-row > :first-child {
+  grid-column-start: 4;
 }
 
 /* =========================================
-   UPDATED 5-SURFACE TOOTH STYLES (SVG)
+   5-SURFACE TOOTH SVG STYLES
    ========================================= */
-
 .tc-circle-unit {
   display: flex;
   flex-direction: column;
@@ -328,11 +455,12 @@
   background: none;
   border: none;
   padding: 0;
+  width: 100%;
 }
 
 .tc-circle-wrapper {
-  width: 36px;
-  height: 36px;
+  width: 32px; /* Compressed circle size */
+  height: 32px;
   border-radius: 50%;
   border: 2px solid #000;
   position: relative;
@@ -354,31 +482,26 @@
   cursor: pointer;
 }
 
-/* FIX: When the center circle is 'transparent' (no status), 
-  force it to white so it hides the intersecting lines underneath.
-*/
+/* Fix for transparent center circle */
 .tc-tooth-svg circle[fill="transparent"] {
   fill: #ffffff !important;
 }
 
-/* Ensure the border of the center circle is visible */
 .tc-tooth-svg circle {
   stroke-width: 1.5px !important;
 }
 
-/* Hover effect for the white circle */
 .tc-tooth-svg circle[fill="transparent"]:hover {
   fill: #f1f5f9 !important;
 }
 
-/* Hover effect for other segments */
 .tooth-poly:hover {
   fill: #f1f5f9; 
 }
 
 .tc-number {
-  margin-top: 6px;
-  font-size: 10px;
+  margin-top: 2px; /* Tighter number spacing */
+  font-size: 9px;
   font-weight: 600;
 }
 
@@ -388,8 +511,9 @@
   color: #606f7b;
 }
 
-/* ========================================= */
-
+/* =========================================
+   ATTACHMENTS & BUTTONS
+   ========================================= */
 .attachment-section {
   margin-top: 20px;
 }
@@ -432,12 +556,50 @@
   cursor: pointer;
 }
 
+.small-btn {
+  padding: 6px 12px;
+  background: #0ea5e9;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.small-btn.danger {
+  background: #fee2e2;
+  color: #ef4444;
+}
+
+.form-actions-bottom {
+  margin-top: 2rem;
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+  border-top: 1px solid #e9ecef;
+  padding-top: 1rem;
+}
+
+.done-btn {
+  padding: 10px 24px;
+  background: #16a34a;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.done-btn.secondary {
+  background: #64748b;
+}
+
+/* =========================================
+   SIDE PANEL (Right Slide-In)
+   ========================================= */
 .side-panel-backdrop {
   position: fixed;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  left: 0;
+  top: 0; right: 0; bottom: 0; left: 0;
   background: rgba(0, 0, 0, 0);
   visibility: hidden;
   opacity: 0;
@@ -502,8 +664,7 @@
   margin-top: 14px;
 }
 
-.option-pill,
-.option-pill:hover {
+.option-pill {
   width: 100%;
   padding: 10px 12px;
   background: #f2f6fb;

@@ -21,6 +21,8 @@ router.get("/", async (req, res) => {
     const results = rows.map(p => ({
       ...p,
       medical_alerts: p.medical_alerts ? p.medical_alerts.split(',') : [],
+      // Ensure dental_history is passed as a string
+      dental_history: p.dental_history || "", 
       vitals: typeof p.vitals === 'string' ? JSON.parse(p.vitals) : (p.vitals || {}),
       xrays: [] 
     }));
@@ -32,7 +34,7 @@ router.get("/", async (req, res) => {
   }
 });
 
-// NEW: Get Family Members
+// Get Family Members
 router.get("/:id/family", async (req, res) => {
   const { id } = req.params;
   try {
@@ -70,11 +72,20 @@ router.get("/:id", async (req, res) => {
 // Create patient
 router.post("/", async (req, res) => {
   const { 
-    full_name, birthdate, gender, sex, address, 
-    contact_number, contact, email, medicalAlerts, vitals, age, dentist_id,
+    full_name, first_name, last_name, middle_name, // UPDATED: Name fields
+    birthdate, gender, sex, address, 
+    contact_number, contact, email, 
+    medicalAlerts, dental_history, // UPDATED: Dental History
+    vitals, age, dentist_id,
     parent_id, xrays 
   } = req.body;
   
+  // Logic: Construct full_name if only split names are provided
+  let dbFullName = full_name;
+  if (!dbFullName && (first_name || last_name)) {
+      dbFullName = `${first_name || ''} ${middle_name ? middle_name + ' ' : ''}${last_name || ''}`.trim();
+  }
+
   const dbGender = gender || sex;
   const dbContact = contact_number || contact;
   const dbMedicalAlerts = Array.isArray(medicalAlerts) ? medicalAlerts.join(',') : (medicalAlerts || null);
@@ -88,9 +99,9 @@ router.post("/", async (req, res) => {
   
   try {
     const [result] = await db.query(
-      `INSERT INTO patients (full_name, birthdate, gender, address, contact_number, email, medical_alerts, vitals, xrays, parent_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [full_name, birthdate || null, dbGender, address, dbContact, email, dbMedicalAlerts, dbVitalsString, dbXraysString, parent_id || null]
+      `INSERT INTO patients (full_name, first_name, last_name, middle_name, birthdate, gender, address, contact_number, email, medical_alerts, dental_history, vitals, xrays, parent_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [dbFullName, first_name, last_name, middle_name, birthdate || null, dbGender, address, dbContact, email, dbMedicalAlerts, dental_history || null, dbVitalsString, dbXraysString, parent_id || null]
     );
 
     const [rows] = await db.query("SELECT * FROM patients WHERE id = ?", [result.insertId]);
@@ -105,11 +116,19 @@ router.post("/", async (req, res) => {
 router.put("/:id", async (req, res) => {
   const { id } = req.params;
   const { 
-    full_name, name, birthdate, gender, sex, address, 
-    contact_number, contact, email, medicalAlerts, vitals, age, dentist_id, xrays 
+    full_name, name, first_name, last_name, middle_name,
+    birthdate, gender, sex, address, 
+    contact_number, contact, email, 
+    medicalAlerts, dental_history,
+    vitals, age, dentist_id, xrays 
   } = req.body;
   
-  const dbName = full_name || name;
+  // Logic: Reconstruct full_name if split names change
+  let dbName = full_name || name;
+  if (!dbName && (first_name || last_name)) {
+      dbName = `${first_name || ''} ${middle_name ? middle_name + ' ' : ''}${last_name || ''}`.trim();
+  }
+
   const dbGender = gender || sex;
   const dbContact = contact_number || contact;
   const dbMedicalAlerts = Array.isArray(medicalAlerts) ? medicalAlerts.join(',') : (medicalAlerts || null);
@@ -119,26 +138,26 @@ router.put("/:id", async (req, res) => {
   if (dentist_id) dbVitals.dentist_id = dentist_id;
   const dbVitalsString = JSON.stringify(dbVitals);
   
-  // Logic: Only update xrays if explicitly provided (to avoid overwriting with null)
   let dbXraysString = null;
   if (xrays !== undefined) {
       dbXraysString = JSON.stringify(xrays);
   }
 
   try {
+    // Only update xrays if provided
     if (dbXraysString !== null) {
         await db.query(
             `UPDATE patients 
-             SET full_name=?, birthdate=?, gender=?, address=?, contact_number=?, email=?, medical_alerts=?, vitals=?, xrays=?
+             SET full_name=?, first_name=?, last_name=?, middle_name=?, birthdate=?, gender=?, address=?, contact_number=?, email=?, medical_alerts=?, dental_history=?, vitals=?, xrays=?
              WHERE id=?`,
-            [dbName, birthdate || null, dbGender, address, dbContact, email, dbMedicalAlerts, dbVitalsString, dbXraysString, id]
+            [dbName, first_name, last_name, middle_name, birthdate || null, dbGender, address, dbContact, email, dbMedicalAlerts, dental_history || null, dbVitalsString, dbXraysString, id]
         );
     } else {
         await db.query(
             `UPDATE patients 
-             SET full_name=?, birthdate=?, gender=?, address=?, contact_number=?, email=?, medical_alerts=?, vitals=?
+             SET full_name=?, first_name=?, last_name=?, middle_name=?, birthdate=?, gender=?, address=?, contact_number=?, email=?, medical_alerts=?, dental_history=?, vitals=?
              WHERE id=?`,
-            [dbName, birthdate || null, dbGender, address, dbContact, email, dbMedicalAlerts, dbVitalsString, id]
+            [dbName, first_name, last_name, middle_name, birthdate || null, dbGender, address, dbContact, email, dbMedicalAlerts, dental_history || null, dbVitalsString, id]
         );
     }
 

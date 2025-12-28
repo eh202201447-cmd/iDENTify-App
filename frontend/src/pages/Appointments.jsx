@@ -65,27 +65,26 @@ function Appointments() {
     [appointments]
   );
 
-  // --- FIXED START HANDLER ---
-  const handleStartAppointment = async (appointment) => {
+  // --- MODIFIED: ADD TO QUEUE HANDLER (No Navigation) ---
+  const handleAddToQueue = async (appointment) => {
     let patientId = appointment.patient_id;
     let fullPatientData = null;
 
-    // 1. Try to find patient in local store with Loose Equality (String vs Number fix)
+    // 1. Try to find patient in local store
     if (patientId) {
       fullPatientData = patients.find((p) => String(p.id) === String(patientId));
     }
 
-    // 2. If not found locally (e.g. newly created on mobile), FETCH IT
+    // 2. If not found locally, FETCH IT (Validity Check)
     if (!fullPatientData && patientId) {
-      const loadingToast = toast.loading("Fetching patient details...");
+      const loadingToast = toast.loading("Verifying patient details...");
       try {
-        // Fetch fresh data from server
         fullPatientData = await api.getPatientById(patientId);
         toast.dismiss(loadingToast);
       } catch (error) {
         toast.dismiss(loadingToast);
         console.error("Patient fetch error", error);
-        toast.error("Error: Could not load patient details. Check internet.");
+        toast.error("Error: Could not verify patient details.");
         return;
       }
     }
@@ -102,38 +101,35 @@ function Appointments() {
       q.status !== 'Cancelled'
     );
 
-    if (isAlreadyInQueue && appointment.status !== 'Checked-In') {
-      toast.error(`Cannot Start: Patient is already in Queue.`);
+    if (isAlreadyInQueue) {
+      toast.error(`Patient is already in the active Queue.`);
       return;
     }
 
     try {
+      // Update Appointment Status
       await api.updateAppointment(appointment.id, { status: 'Checked-In' });
 
-      if (!isAlreadyInQueue) {
-        await api.addQueue({
-          patient_id: patientId,
-          dentist_id: appointment.dentist_id || dentists.find((d) => d.name === appointment.dentist)?.id,
-          appointment_id: appointment.id,
-          source: "appointment",
-          status: "Checked-In",
-          notes: appointment.procedure || appointment.reason,
-          checkedInTime: new Date().toISOString(),
-        });
-        toast.success("Patient added to queue.");
-      }
-
-      navigate(`/app/patient/${patientId}`, {
-        state: {
-          patientData: fullPatientData,
-          dentistId: appointment.dentist_id,
-          appointment: appointment // Triggers auto-fill in Patient Form
-        }
+      // Add to Queue
+      await api.addQueue({
+        patient_id: patientId,
+        dentist_id: appointment.dentist_id || dentists.find((d) => d.name === appointment.dentist)?.id,
+        appointment_id: appointment.id,
+        source: "appointment",
+        status: "Checked-In",
+        notes: appointment.procedure || appointment.reason,
+        checkedInTime: new Date().toISOString(),
       });
 
+      toast.success("Patient added to Queue successfully.");
+
+      // Refresh Data to reflect changes immediately
+      api.loadAppointments();
+      api.loadQueue();
+
     } catch (err) {
-      console.error('Failed to start appointment', err);
-      toast.error('Failed to start appointment. Check console.');
+      console.error('Failed to add to queue', err);
+      toast.error('Failed to process request. Check console.');
     }
   };
 
@@ -145,7 +141,7 @@ function Appointments() {
       if (["done", "cancelled", "no-show"].includes(status)) return;
 
       const start = toMinutes(appt.timeStart);
-      const end = start + 30; // Default 30 min slots if end time missing
+      const end = start + 30;
 
       const dentistName = dentists.find(d => d.id === appt.dentist_id)?.name || appt.dentist || "Unassigned";
       const existing = dentistMap.get(dentistName) || [];
@@ -227,6 +223,7 @@ function Appointments() {
       handleCloseModal();
 
       api.loadPatients();
+      api.loadAppointments();
     } catch (err) {
       console.error('Could not update appointment', err);
       toast.error('Failed to update. Check console.');
@@ -239,6 +236,7 @@ function Appointments() {
       await api.removeAppointment(selectedAppointment.id);
       toast.success("Appointment deleted");
       handleCloseModal();
+      api.loadAppointments();
     } catch (err) {
       toast.error('Failed to delete appointment');
     }
@@ -262,6 +260,8 @@ function Appointments() {
       await api.createAppointment(appointmentToCreate);
       toast.success("Appointment added");
       setIsAddModalOpen(false);
+      api.loadAppointments();
+      api.loadPatients();
     } catch (err) {
       toast.error('Failed to add appointment');
     }
@@ -325,7 +325,7 @@ function Appointments() {
             ) : (
               filteredAppointments.map((a) => {
                 const s = (a.status || "").toLowerCase().trim();
-                const canStart = s === "scheduled" || s === "checked-in";
+                const canAddToQueue = s === "scheduled"; // Only Scheduled can be added to Queue
 
                 return (
                   <tr key={a.id}>
@@ -350,11 +350,13 @@ function Appointments() {
                       <button className="edit-btn" onClick={() => handleEdit(a)}>Edit</button>
                       <button
                         className="start-btn"
-                        onClick={() => handleStartAppointment(a)}
-                        title={!canStart ? "Status must be Scheduled or Checked-In" : "Start Appointment"}
-                        style={!canStart ? { backgroundColor: '#adb5bd', cursor: 'not-allowed' } : {}}
-                        disabled={!canStart}
-                      >Start</button>
+                        onClick={() => handleAddToQueue(a)}
+                        title={!canAddToQueue ? "Already Checked-In/Done" : "Add to Queue"}
+                        style={!canAddToQueue ? { backgroundColor: '#adb5bd', cursor: 'not-allowed' } : {}}
+                        disabled={!canAddToQueue}
+                      >
+                        Add to Queue
+                      </button>
                       <button className="delete-btn" onClick={() => handleDelete(a)}>Delete</button>
                     </td>
                   </tr>

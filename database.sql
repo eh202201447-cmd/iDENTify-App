@@ -12,8 +12,12 @@ CREATE TABLE IF NOT EXISTS `dentists` (
 );
 
 -- PATIENTS TABLE
+-- Updated with split names and dental_history
 CREATE TABLE IF NOT EXISTS `patients` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `first_name` VARCHAR(100),
+  `last_name` VARCHAR(100),
+  `middle_name` VARCHAR(100),
   `full_name` VARCHAR(255) NOT NULL,
   `birthdate` DATE,
   `gender` VARCHAR(50),
@@ -21,6 +25,7 @@ CREATE TABLE IF NOT EXISTS `patients` (
   `contact_number` VARCHAR(50),
   `email` VARCHAR(255),
   `medical_alerts` TEXT,
+  `dental_history` TEXT,
   `vitals` JSON,
   `parent_id` INT,
   `xrays` LONGTEXT,
@@ -59,8 +64,6 @@ CREATE TABLE IF NOT EXISTS `walk_in_queue` (
 );
 
 -- TOOTH CONDITIONS TABLE
--- Stores the visual charting data
--- UPDATED: Added 'segments' column to store 5-part status (top, bottom, left, right, center)
 CREATE TABLE IF NOT EXISTS `tooth_conditions` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
   `patient_id` INT,
@@ -73,6 +76,7 @@ CREATE TABLE IF NOT EXISTS `tooth_conditions` (
 );
 
 -- TREATMENT TIMELINE TABLE
+-- Updated with price column
 CREATE TABLE IF NOT EXISTS `treatment_timeline` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
   `patient_id` INT,
@@ -81,6 +85,7 @@ CREATE TABLE IF NOT EXISTS `treatment_timeline` (
   `provider` VARCHAR(255),
   `procedure_text` TEXT,
   `notes` TEXT,
+  `price` DECIMAL(10, 2),
   `image_url` LONGTEXT,
   FOREIGN KEY (`patient_id`) REFERENCES `patients`(`id`) ON DELETE CASCADE
 );

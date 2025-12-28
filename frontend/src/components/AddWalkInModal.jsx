@@ -111,9 +111,9 @@ const AddWalkInModal = ({ isOpen, onClose, onAddPatient }) => {
                 onChange={(e) => setCurrentService(e.target.value)}
               >
                 <option value="">Select a service...</option>
-                {dentalServices.map((service) => (
-                  <option key={service} value={service}>
-                    {service}
+                {dentalServices.map((service, index) => (
+                  <option key={index} value={service.name}>
+                    {service.name} ({service.price})
                   </option>
                 ))}
               </select>

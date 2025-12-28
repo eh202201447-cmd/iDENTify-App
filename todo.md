@@ -4,6 +4,8 @@ This document tracks the feedback, feature requests, and bug fixes for the Denti
 
 ## ❌ Pending Tasks (Not Done)
 
+## Web 
+
 ### General Feedback
 - [ ] **Dynamic Age:** Age should be auto-calculated; only the birthday should be inputted.
 - [ ] **Automated Recommendations:** The selected issues on teeth should automatically show the list of treatments recommended. *(Ref: Ma'am Justine)*
@@ -14,15 +16,15 @@ This document tracks the feedback, feature requests, and bug fixes for the Denti
 - [ ] **Phone Input:** Country code in phone field should be consistent with web/admin.
 - [ ] **UI Adjustment:** The "Note" field needs to be bigger.
 - [ ] **Multi-Entry:** Needs ability to perform multiple "add entry" actions.
-- [ ] **Navigation:** Add a "Back" button.
 - [ ] **Status Logic:** Status should not be editable after the procedure is marked as done.
 - [ ] **New Feature:** Add a "Dental History" section.
+- [ ] **History Logs:** Previous records should remain. Procedure logs must be recorded and browsable by the doctor.
 
 ---
 
 ## App
 - [ ] **Pricing Display:** Show pricing for patients (estimated amount to pay / *babayaran*).
-- [ ] **History Logs:** Previous records should remain. Procedure logs must be recorded and browsable by the doctor.
+- [ ] **Navigation:** Add a "Back" button.
 
 ## ✅ Completed Tasks (Done)
 
