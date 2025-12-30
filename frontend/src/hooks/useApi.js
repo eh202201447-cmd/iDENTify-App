@@ -71,7 +71,6 @@ export default function useApi() {
     try {
       const list = await api.getAppointments();
       const transformedList = list.map(appt => {
-        // FIX: Remove manual timeEnd calculation
         let timeStart = "";
         if (appt.appointment_datetime) {
             const apptDate = new Date(appt.appointment_datetime);
@@ -81,7 +80,6 @@ export default function useApi() {
         return {
           ...appt,
           timeStart,
-          // timeEnd is no longer calculated or used
           patient: appt.full_name,
         };
       });
@@ -232,7 +230,6 @@ export default function useApi() {
     if (created?.id) {
       const apptDate = new Date(created.appointment_datetime);
       const timeStart = apptDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-      // Removed TimeEnd generation
 
       const transformed = {
         ...created,
@@ -300,14 +297,17 @@ export default function useApi() {
     }
   }, []);
 
-  const getToothConditions = useCallback(async (patientId) => api.getToothConditions(patientId), []);
+  const getToothConditions = useCallback(async (patientId, year) => api.getToothConditions(patientId, year), []);
   const upsertToothCondition = useCallback(async (payload) => api.upsertToothCondition(payload), []);
-  const getTreatmentTimeline = useCallback(async (patientId) => api.getTreatmentTimeline(patientId), []);
+  const getTreatmentTimeline = useCallback(async (patientId, year) => api.getTreatmentTimeline(patientId, year), []);
   const addTreatmentTimelineEntry = useCallback(async (payload) => api.addTreatmentTimelineEntry(payload), []);
   const deleteTreatmentTimelineEntry = useCallback(async (id) => api.deleteTreatmentTimelineEntry(id), []);
-  const getMedications = useCallback(async (patientId) => api.getMedications(patientId), []);
+  const getMedications = useCallback(async (patientId, year) => api.getMedications(patientId, year), []);
   const addMedication = useCallback(async (payload) => api.addMedication(payload), []);
   const deleteMedication = useCallback(async (id) => api.deleteMedication(id), []);
+
+  const getAnnualRecord = useCallback(async (patientId, year) => api.getAnnualRecord(patientId, year), []);
+  const saveAnnualRecord = useCallback(async (payload) => api.saveAnnualRecord(payload), []);
 
   return {
     loading,
@@ -336,5 +336,7 @@ export default function useApi() {
     addMedication,
     deleteMedication,
     updateDentist,
+    getAnnualRecord,
+    saveAnnualRecord,
   };
 }

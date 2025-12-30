@@ -2,11 +2,22 @@ const express = require("express");
 const router = express.Router();
 const db = require("../db");
 
-// Get Timeline for Patient
 router.get("/:patientId", async (req, res) => {
   const { patientId } = req.params;
+  const { year } = req.query;
+
   try {
-    const [rows] = await db.query("SELECT * FROM treatment_timeline WHERE patient_id = ? ORDER BY id DESC", [patientId]);
+    let query = "SELECT * FROM treatment_timeline WHERE patient_id = ?";
+    let params = [patientId];
+
+    if (year) {
+        query += " AND record_year = ?";
+        params.push(year);
+    }
+    
+    query += " ORDER BY id DESC";
+
+    const [rows] = await db.query(query, params);
     res.json(rows);
   } catch (error) {
     console.error("Error fetching timeline:", error);
@@ -14,15 +25,14 @@ router.get("/:patientId", async (req, res) => {
   }
 });
 
-// Add Timeline Entry
 router.post("/", async (req, res) => {
-  const { patient_id, start_time, end_time, provider, procedure_text, notes, image_url, price } = req.body;
+  const { patient_id, start_time, end_time, provider, procedure_text, notes, image_url, price, record_year } = req.body;
   
   try {
     const [result] = await db.query(
-      `INSERT INTO treatment_timeline (patient_id, start_time, end_time, provider, procedure_text, notes, image_url, price)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [patient_id, start_time, end_time, provider, procedure_text, notes, image_url, price || 0.00]
+      `INSERT INTO treatment_timeline (patient_id, start_time, end_time, provider, procedure_text, notes, image_url, price, record_year)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [patient_id, start_time, end_time, provider, procedure_text, notes, image_url, price || 0.00, record_year || 1]
     );
     const [rows] = await db.query("SELECT * FROM treatment_timeline WHERE id = ?", [result.insertId]);
     res.status(201).json(rows[0]);
@@ -32,7 +42,6 @@ router.post("/", async (req, res) => {
   }
 });
 
-// Delete Timeline Entry
 router.delete("/:id", async (req, res) => {
   const { id } = req.params;
   try {

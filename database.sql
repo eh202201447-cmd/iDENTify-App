@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS `dentists` (
 );
 
 -- PATIENTS TABLE
--- Updated with split names and dental_history
+-- Stores global immutable data (Demographics, Medical Alerts)
 CREATE TABLE IF NOT EXISTS `patients` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
   `first_name` VARCHAR(100),
@@ -24,13 +24,25 @@ CREATE TABLE IF NOT EXISTS `patients` (
   `address` TEXT,
   `contact_number` VARCHAR(50),
   `email` VARCHAR(255),
-  `medical_alerts` TEXT,
-  `dental_history` TEXT,
-  `vitals` JSON,
+  `medical_alerts` TEXT, -- Allergies usually persist, so keeping them global
   `parent_id` INT,
-  `xrays` LONGTEXT,
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (`parent_id`) REFERENCES `patients`(`id`) ON DELETE SET NULL
+);
+
+-- PATIENT ANNUAL RECORDS TABLE
+-- Stores year-specific data (Vitals, Dental History, X-rays, Status)
+CREATE TABLE IF NOT EXISTS `patient_annual_records` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `patient_id` INT NOT NULL,
+  `record_year` INT NOT NULL DEFAULT 1,
+  `dental_history` TEXT,
+  `vitals` JSON,
+  `xrays` LONGTEXT,
+  `status` VARCHAR(50) DEFAULT 'Active', -- 'Active' or 'Done'
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (`patient_id`) REFERENCES `patients`(`id`) ON DELETE CASCADE,
+  UNIQUE KEY `unique_year_record` (`patient_id`, `record_year`)
 );
 
 -- APPOINTMENTS TABLE
@@ -64,9 +76,11 @@ CREATE TABLE IF NOT EXISTS `walk_in_queue` (
 );
 
 -- TOOTH CONDITIONS TABLE
+-- Added record_year
 CREATE TABLE IF NOT EXISTS `tooth_conditions` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
   `patient_id` INT,
+  `record_year` INT NOT NULL DEFAULT 1,
   `cell_key` VARCHAR(255) NOT NULL,
   `condition_code` VARCHAR(10),
   `status` VARCHAR(50),
@@ -76,10 +90,11 @@ CREATE TABLE IF NOT EXISTS `tooth_conditions` (
 );
 
 -- TREATMENT TIMELINE TABLE
--- Updated with price column
+-- Added record_year
 CREATE TABLE IF NOT EXISTS `treatment_timeline` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
   `patient_id` INT,
+  `record_year` INT NOT NULL DEFAULT 1,
   `start_time` VARCHAR(255),
   `end_time` VARCHAR(255),
   `provider` VARCHAR(255),
@@ -91,9 +106,11 @@ CREATE TABLE IF NOT EXISTS `treatment_timeline` (
 );
 
 -- MEDICATIONS TABLE
+-- Added record_year
 CREATE TABLE IF NOT EXISTS `medications` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
   `patient_id` INT,
+  `record_year` INT NOT NULL DEFAULT 1,
   `medicine` VARCHAR(255) NOT NULL,
   `dosage` VARCHAR(255),
   `frequency` VARCHAR(255),

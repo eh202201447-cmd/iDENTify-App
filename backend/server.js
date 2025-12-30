@@ -3,6 +3,7 @@ const cors = require("cors");
 require("dotenv").config();
 
 const patientsRoutes = require("./routes/patients");
+const annualRecordsRoutes = require("./routes/annual_records"); // NEW
 const appointmentsRoutes = require("./routes/appointments");
 const queueRoutes = require("./routes/queue");
 const toothConditionsRoutes = require("./routes/tooth_conditions");
@@ -20,6 +21,7 @@ app.use(express.urlencoded({ limit: "5000mb", extended: true }));
 
 // Routes
 app.use("/api/patients", patientsRoutes);
+app.use("/api/annual-records", annualRecordsRoutes); // NEW
 app.use("/api/appointments", appointmentsRoutes);
 app.use("/api/queue", queueRoutes);
 app.use("/api/tooth-conditions", toothConditionsRoutes);
@@ -31,6 +33,6 @@ app.use("/api/reports", reportsRoutes);
 
 const PORT = process.env.PORT || 4006;
 
-// UPDATED: Listen on '0.0.0.0' to accept connections from your network (e.g. your phone)
-// instead of just 'localhost'.
-app.listen(PORT, '0.0.0.0', () => console.log(`Backend running on port ${PORT}`));
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server running on port ${PORT}`);
+});
