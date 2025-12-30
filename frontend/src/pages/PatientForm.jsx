@@ -133,6 +133,7 @@ function PatientForm() {
 	const [selectedDentistId, setSelectedDentistId] = useState("");
 
 	// --- ANNUAL RECORD STATE ---
+	const [yearsList, setYearsList] = useState([1, 2, 3, 4, 5]); // CHANGED: State for dynamic years
 	const [selectedYear, setSelectedYear] = useState(1);
 	const [isYearDone, setIsYearDone] = useState(false); // Controls Read-Only for the specific year
 
@@ -189,6 +190,15 @@ function PatientForm() {
 		}
 		if (p.age !== undefined && p.age !== null) return p.age;
 		return "N/A";
+	};
+
+	// NEW: Handler to add a new year dynamically
+	const handleAddYear = () => {
+		const maxYear = Math.max(...yearsList);
+		const newYear = maxYear + 1;
+		setYearsList([...yearsList, newYear]);
+		setSelectedYear(newYear); // Switch to the new year immediately
+		toast.success(`Started Year ${newYear}`);
 	};
 
 	// --- 1. INITIAL LOAD (Patient Info & Dentists) ---
@@ -874,9 +884,9 @@ function PatientForm() {
 				<section className="oral-section">
 					<h3 className="section-title">Oral Health Condition</h3>
 
-					{/* YEAR TABS */}
-					<div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
-						{[1, 2, 3, 4, 5].map(year => (
+					{/* YEAR TABS - DYNAMIC */}
+					<div style={{ display: 'flex', gap: '10px', marginBottom: '15px', flexWrap: 'wrap', alignItems: 'center' }}>
+						{yearsList.map(year => (
 							<button
 								key={year}
 								onClick={() => setSelectedYear(year)}
@@ -896,6 +906,28 @@ function PatientForm() {
 								Year {year}
 							</button>
 						))}
+
+						{/* ADD YEAR BUTTON */}
+						<button
+							onClick={handleAddYear}
+							style={{
+								padding: '8px 12px',
+								borderRadius: '20px',
+								border: '2px dashed #cbd5e1',
+								cursor: 'pointer',
+								fontWeight: 'bold',
+								fontSize: '1rem',
+								backgroundColor: 'transparent',
+								color: '#64748b',
+								transition: 'all 0.2s',
+								display: 'flex',
+								alignItems: 'center',
+								justifyContent: 'center'
+							}}
+							title="Add Next Year"
+						>
+							+
+						</button>
 					</div>
 
 					<div className="status-palette">
