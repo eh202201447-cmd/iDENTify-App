@@ -11,39 +11,45 @@ router.get("/status", async (req, res) => {
   }
 
   try {
-    const [myQueueRows] = await db.query(
+    // 1. Fetch ALL active items to calculate positions
+    // We filter out 'Done' and 'Cancelled' because they don't count towards the line number.
+    const [allActiveRows] = await db.query(
       `SELECT q.*, p.full_name, d.name as dentist_name 
        FROM walk_in_queue q
        LEFT JOIN patients p ON q.patient_id = p.id
        LEFT JOIN dentists d ON q.dentist_id = d.id
-       WHERE q.patient_id = ? AND q.status NOT IN ('Done', 'Cancelled')
-       ORDER BY time_added ASC LIMIT 1`,
-      [patient_id]
+       WHERE q.status NOT IN ('Done', 'Cancelled')
+       ORDER BY FIELD(q.status, 'On Chair', 'Treatment', 'Serving', 'Checked-In', 'Waiting', 'Payment / Billing'), time_added ASC`
     );
 
-    const [servingRows] = await db.query(
-      `SELECT q.*, p.full_name 
-       FROM walk_in_queue q 
-       JOIN patients p ON q.patient_id = p.id
-       WHERE q.status IN ('On Chair', 'Serving', 'Treatment') 
-       ORDER BY time_added ASC LIMIT 1`
+    // 2. Find "My Status" and calculate "My Number" (Position in the List)
+    // We search the sorted list for the current user.
+    const myIndex = allActiveRows.findIndex(row => String(row.patient_id) === String(patient_id));
+    
+    // If found, the "Ticket Number" is the index + 1 (so the first person is #1, not #0)
+    const myStatusRow = myIndex !== -1 ? allActiveRows[myIndex] : null;
+    const myNumber = myIndex !== -1 ? myIndex + 1 : null; 
+
+    // 3. Find "Now Serving" and calculate "Serving Number"
+    // The "Now Serving" person is the first one with status 'On Chair', 'Serving', or 'Treatment'.
+    let servingIndex = allActiveRows.findIndex(row => 
+      ['On Chair', 'Serving', 'Treatment'].includes(row.status)
     );
 
-    let nowServing = servingRows[0];
-    if (!nowServing) {
-      const [waitingRows] = await db.query(
-        `SELECT q.*, p.full_name 
-         FROM walk_in_queue q 
-         JOIN patients p ON q.patient_id = p.id
-         WHERE q.status IN ('Waiting', 'Checked-In') 
-         ORDER BY time_added ASC LIMIT 1`
-      );
-      nowServing = waitingRows[0];
+    // Fallback: If nobody is explicitly "On Chair", the first person in the list is the one being served.
+    if (servingIndex === -1 && allActiveRows.length > 0) {
+      servingIndex = 0;
     }
 
+    const servingRow = servingIndex !== -1 ? allActiveRows[servingIndex] : null;
+    const servingNumber = servingIndex !== -1 ? servingIndex + 1 : null; 
+
+    // 4. Return the CALCULATED numbers (myNumber, servingNumber) that the App expects
     res.json({
-      myStatus: myQueueRows[0] || null,
-      nowServing: nowServing || null,
+      myStatus: myStatusRow,
+      myNumber: myNumber,           // <--- The App needs this for "Your Ticket"
+      nowServing: servingRow,
+      servingNumber: servingNumber, // <--- The App needs this for "Now Serving"
       estimatedWaitTime: "10-20 mins",
     });
 
@@ -53,7 +59,7 @@ router.get("/status", async (req, res) => {
   }
 });
 
-// Get entire queue
+// Get entire queue (Web Dashboard)
 router.get("/", async (req, res) => {
   const [rows] = await db.query(
     `SELECT q.*, p.full_name, d.name as dentist_name 
@@ -104,10 +110,9 @@ router.put("/:id", async (req, res) => {
       [status, id]
     );
 
-    // 2. CRITICAL FIX: Find if this queue item is linked to an appointment
+    // 2. Sync with Appointment if linked
     const [qItem] = await db.query("SELECT appointment_id FROM walk_in_queue WHERE id = ?", [id]);
     
-    // 3. If linked, update the Appointment status too!
     if (qItem.length > 0 && qItem[0].appointment_id) {
        await db.query(
          `UPDATE appointments SET status = ? WHERE id = ?`,
