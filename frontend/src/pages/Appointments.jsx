@@ -65,17 +65,14 @@ function Appointments() {
     [appointments]
   );
 
-  // --- MODIFIED: ADD TO QUEUE HANDLER (No Navigation) ---
   const handleAddToQueue = async (appointment) => {
     let patientId = appointment.patient_id;
     let fullPatientData = null;
 
-    // 1. Try to find patient in local store
     if (patientId) {
       fullPatientData = patients.find((p) => String(p.id) === String(patientId));
     }
 
-    // 2. If not found locally, FETCH IT (Validity Check)
     if (!fullPatientData && patientId) {
       const loadingToast = toast.loading("Verifying patient details...");
       try {
@@ -94,7 +91,6 @@ function Appointments() {
       return;
     }
 
-    // 3. Check Queue Conflict
     const isAlreadyInQueue = queue.some((q) =>
       String(q.patient_id) === String(patientId) &&
       q.status !== 'Done' &&
@@ -107,10 +103,8 @@ function Appointments() {
     }
 
     try {
-      // Update Appointment Status
       await api.updateAppointment(appointment.id, { status: 'Checked-In' });
 
-      // Add to Queue
       await api.addQueue({
         patient_id: patientId,
         dentist_id: appointment.dentist_id || dentists.find((d) => d.name === appointment.dentist)?.id,
@@ -122,8 +116,6 @@ function Appointments() {
       });
 
       toast.success("Patient added to Queue successfully.");
-
-      // Refresh Data to reflect changes immediately
       api.loadAppointments();
       api.loadQueue();
 
@@ -204,7 +196,12 @@ function Appointments() {
 
       const existingPatient = patients.find(p => p.id === pid);
 
+      // UPDATED: Handle split names in edit
+      if (updatedAppointment.first_name) updates.first_name = updatedAppointment.first_name;
+      if (updatedAppointment.last_name) updates.last_name = updatedAppointment.last_name;
+      if (updatedAppointment.middle_name) updates.middle_name = updatedAppointment.middle_name;
       if (updatedAppointment.patient_name) updates.full_name = updatedAppointment.patient_name;
+
       if (updatedAppointment.contact_number) updates.contact_number = updatedAppointment.contact_number;
       if (updatedAppointment.sex) updates.gender = updatedAppointment.sex;
       if (updatedAppointment.age) {
@@ -212,6 +209,7 @@ function Appointments() {
         const existingVitals = existingPatient?.vitals || {};
         updates.vitals = { ...existingVitals, age: updatedAppointment.age };
       }
+      if (updatedAppointment.birthdate) updates.birthdate = updatedAppointment.birthdate;
 
       if (pid && Object.keys(updates).length > 0) {
         await api.updatePatient(pid, updates);
@@ -244,17 +242,27 @@ function Appointments() {
 
   const handleAddAppointment = async (appointmentData) => {
     try {
-      const newPatient = await api.createPatient({
-        full_name: appointmentData.patient_name,
-        contact_number: appointmentData.contact_number,
-        gender: appointmentData.sex,
-        age: appointmentData.age,
-        vitals: { age: appointmentData.age }
-      });
+      let patientId = appointmentData.patient_id;
+
+      // UPDATED: Create Patient with Split Names if NEW
+      if (appointmentData.isNewPatient) {
+        const newPatient = await api.createPatient({
+          full_name: appointmentData.patient_name,
+          first_name: appointmentData.first_name, // NEW
+          last_name: appointmentData.last_name,   // NEW
+          middle_name: appointmentData.middle_name, // NEW
+          contact_number: appointmentData.contact_number,
+          gender: appointmentData.sex,
+          age: appointmentData.age,
+          birthdate: appointmentData.birthdate, // NEW
+          vitals: { age: appointmentData.age }
+        });
+        patientId = newPatient.id;
+      }
 
       const appointmentToCreate = {
         ...appointmentData,
-        patient_id: newPatient.id,
+        patient_id: patientId,
       };
 
       await api.createAppointment(appointmentToCreate);
@@ -263,6 +271,7 @@ function Appointments() {
       api.loadAppointments();
       api.loadPatients();
     } catch (err) {
+      console.error(err);
       toast.error('Failed to add appointment');
     }
   };
@@ -325,7 +334,7 @@ function Appointments() {
             ) : (
               filteredAppointments.map((a) => {
                 const s = (a.status || "").toLowerCase().trim();
-                const canAddToQueue = s === "scheduled"; // Only Scheduled can be added to Queue
+                const canAddToQueue = s === "scheduled";
 
                 return (
                   <tr key={a.id}>

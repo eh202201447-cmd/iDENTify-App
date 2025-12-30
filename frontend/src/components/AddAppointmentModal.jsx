@@ -1,11 +1,10 @@
 import React, { useState, useMemo, useEffect } from "react";
 import toast from "react-hot-toast";
-import "../styles/components/EditAppointmentModal.css"; // Ensure this CSS file exists
+import "../styles/components/EditAppointmentModal.css";
 import { dentalServices } from "../data/services";
 import api from "../api/apiClient";
 
 // --- HELPERS ---
-
 function formatTime12Hour(time24) {
   if (!time24) return "";
   const [hours, minutes] = time24.split(":");
@@ -36,24 +35,28 @@ const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 // --- COMPONENT ---
 
 function AddAppointmentModal({ isOpen, onClose, dentists = [], onSave }) {
-  // 1. PATIENT TOGGLE & FORM STATE
+  // 1. PATIENT TOGGLE & SEARCH STATE
   const [patientType, setPatientType] = useState("new"); // "new" or "old"
-  const [existingPatients, setExistingPatients] = useState([]);
+
+  // Search State
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState([]);
+  const [isSearching, setIsSearching] = useState(false);
 
   const [form, setForm] = useState({
     // Split Name Fields
     first_name: "",
     last_name: "",
     middle_name: "",
-    patient_name: "", // Legacy/Display
+    patient_name: "",
 
     contact_number: "",
     birthdate: "",
     age: "",
     sex: "",
-    dentist_id: "",
+    dentist_id: "", // Ensure this starts as ""
     appointmentDate: getLocalToday(),
-    timeStart: "", // Selected time (HH:MM)
+    timeStart: "",
     notes: "",
     status: "Scheduled",
   });
@@ -64,16 +67,9 @@ function AddAppointmentModal({ isOpen, onClose, dentists = [], onSave }) {
 
   // 2. AVAILABILITY & SLOTS STATE
   const [availability, setAvailability] = useState({ count: 0, limit: 5, isFull: false, checked: false });
-  const [appointments, setAppointments] = useState([]); // Appointments for the selected dentist
+  const [appointments, setAppointments] = useState([]);
   const [generatedSlots, setGeneratedSlots] = useState([]);
   const [slotsLoading, setSlotsLoading] = useState(false);
-
-  // Load existing patients for "Old Patient" mode
-  useEffect(() => {
-    if (patientType === "old") {
-      api.getPatients().then(setExistingPatients).catch(console.error);
-    }
-  }, [patientType]);
 
   const selectedDentist = useMemo(() => {
     return dentists.find(d => String(d.id) === String(form.dentist_id));
@@ -87,18 +83,17 @@ function AddAppointmentModal({ isOpen, onClose, dentists = [], onSave }) {
       let age = today.getFullYear() - dob.getFullYear();
       const m = today.getMonth() - dob.getMonth();
       if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age--;
-      setForm(prev => ({ ...prev, age: age.toString() }));
+      setForm(prev => ({ ...prev, age: age >= 0 ? age.toString() : "0" }));
     }
   }, [form.birthdate]);
 
-  // 3. FETCH APPOINTMENTS WHEN DENTIST/DATE CHANGES (For Slot Calculation)
+  // 3. FETCH APPOINTMENTS WHEN DENTIST/DATE CHANGES
   useEffect(() => {
     if (!form.dentist_id) return;
 
     const loadScheduleData = async () => {
       setSlotsLoading(true);
       try {
-        // Fetch all appointments (or filter by dentist via API if supported)
         const allAppts = await api.getAppointments();
         const dentistAppts = allAppts.filter(a =>
           String(a.dentist_id) === String(form.dentist_id) &&
@@ -106,7 +101,6 @@ function AddAppointmentModal({ isOpen, onClose, dentists = [], onSave }) {
         );
         setAppointments(dentistAppts);
 
-        // Also check daily limit
         if (form.appointmentDate) {
           const res = await api.checkAppointmentLimit(form.dentist_id, form.appointmentDate);
           setAvailability({ ...res, checked: true });
@@ -121,7 +115,7 @@ function AddAppointmentModal({ isOpen, onClose, dentists = [], onSave }) {
     loadScheduleData();
   }, [form.dentist_id, form.appointmentDate]);
 
-  // 4. GENERATE TIME SLOTS LOGIC (Ported from select-datetime.jsx)
+  // 4. GENERATE TIME SLOTS LOGIC
   useEffect(() => {
     if (!selectedDentist || !form.appointmentDate) {
       setGeneratedSlots([]);
@@ -137,94 +131,71 @@ function AddAppointmentModal({ isOpen, onClose, dentists = [], onSave }) {
 
     // Is it a working day?
     const dateObj = new Date(form.appointmentDate);
-    const dayIndex = dateObj.getDay(); // 0 = Sun
+    const dayIndex = dateObj.getDay();
     const worksToday = selectedDentist.days?.includes(dayIndex);
     const isOnLeave = selectedDentist.leaveDays?.includes(form.appointmentDate);
     const isOff = selectedDentist.status === 'Off';
 
     if (!worksToday || isOnLeave || isOff) {
-      setGeneratedSlots([]); // Closed
+      setGeneratedSlots([]);
       return;
     }
 
-    // Prepare Date Comparisons
     const now = new Date();
     const isToday = form.appointmentDate === getLocalToday();
     const currentMinutes = now.getHours() * 60 + now.getMinutes();
 
-    // Filter appointments for THIS selected date
     const dayAppts = appointments.filter(a => {
       if (!a.appointment_datetime) return false;
-      // Handle "2023-01-01T10:00:00" or "2023-01-01 10:00:00"
       const aDate = a.appointment_datetime.includes("T")
         ? a.appointment_datetime.split("T")[0]
         : a.appointment_datetime.split(" ")[0];
       return aDate === form.appointmentDate;
     }).map(a => {
-      // Extract time part
       let timePart = "";
       if (a.appointment_datetime.includes("T")) timePart = a.appointment_datetime.split("T")[1];
       else timePart = a.appointment_datetime.split(" ")[1];
 
       if (!timePart) return { start: -1, end: -1 };
 
-      // Assume 30 min duration for collision check if end time missing, or calculate
       const [h, m] = timePart.split(':').map(Number);
       const startMins = h * 60 + m;
       return { start: startMins, end: startMins + 30 };
     });
 
-    // Loop through minutes
     for (let time = startMin; time < endMin; time += 30) {
       const h = Math.floor(time / 60);
       const m = time % 60;
       const slotEnd = time + 30;
 
-      let type = 'open'; // 'open', 'lunch', 'break', 'past', 'booked'
+      let type = 'open';
       const timeStr24 = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
       const label = formatTime12Hour(timeStr24);
 
-      // Check Lunch
       if (selectedDentist.lunch) {
         const lStart = toMinutes24(selectedDentist.lunch.start);
         const lEnd = toMinutes24(selectedDentist.lunch.end);
-        if (time < lEnd && slotEnd > lStart) {
-          type = 'lunch';
-        }
+        if (time < lEnd && slotEnd > lStart) type = 'lunch';
       }
 
-      // Check Breaks
       if (type === 'open' && selectedDentist.breaks) {
         for (let b of selectedDentist.breaks) {
           const bStart = toMinutes24(b.start);
           const bEnd = toMinutes24(b.end);
-          if (time < bEnd && slotEnd > bStart) {
-            type = 'break';
-            break;
-          }
+          if (time < bEnd && slotEnd > bStart) { type = 'break'; break; }
         }
       }
 
-      // Check Past
-      if (type === 'open' && isToday && time <= currentMinutes) {
-        type = 'past';
-      }
+      if (type === 'open' && isToday && time <= currentMinutes) type = 'past';
 
-      // Check Booked
       if (type === 'open') {
         for (let appt of dayAppts) {
-          if (time < appt.end && slotEnd > appt.start) {
-            type = 'booked';
-            break;
-          }
+          if (time < appt.end && slotEnd > appt.start) { type = 'booked'; break; }
         }
       }
-
       slots.push({ value: timeStr24, label, type });
     }
-
     setGeneratedSlots(slots);
-
   }, [selectedDentist, form.appointmentDate, appointments]);
 
 
@@ -236,20 +207,39 @@ function AddAppointmentModal({ isOpen, onClose, dentists = [], onSave }) {
     setForm((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handlePatientSelect = (e) => {
-    const pId = e.target.value;
-    const p = existingPatients.find(ep => String(ep.id) === String(pId));
-    if (p) {
-      setForm(prev => ({
-        ...prev,
-        patient_name: p.full_name,
-        contact_number: p.contact_number,
-        sex: p.gender,
-        birthdate: p.birthdate ? p.birthdate.split('T')[0] : "",
-        age: p.vitals?.age || "",
-        notes: `Existing Patient ID: ${p.id}`
-      }));
+  const handleSearch = async () => {
+    if (!searchQuery.trim()) return;
+    setIsSearching(true);
+    try {
+      const data = await api.searchPatients(searchQuery);
+      setSearchResults(data);
+      if (data.length === 0) toast.error("No patient found.");
+    } catch (error) {
+      console.error(error);
+      toast.error("Search failed.");
+    } finally {
+      setIsSearching(false);
     }
+  };
+
+  // --- UPDATED: SAFE DATA LOADING ---
+  const handleSelectOldPatient = (p) => {
+    setForm(prev => ({
+      ...prev,
+      patient_id: p.id,
+      patient_name: p.full_name || "",
+      first_name: p.first_name || p.full_name || "",
+      middle_name: p.middle_name || "",
+      last_name: p.last_name || "",
+      contact_number: p.contact_number || "", // Fallback to empty string if null
+      sex: p.gender || p.sex || "",           // Fallback to empty string if null
+      birthdate: p.birthdate ? p.birthdate.split('T')[0] : "",
+      age: (p.vitals?.age || p.age || "").toString(), // Ensure string
+      notes: prev.notes || ""
+    }));
+    setSearchResults([]);
+    setSearchQuery("");
+    toast.success("Patient selected");
   };
 
   const handleAddService = () => {
@@ -295,6 +285,7 @@ function AddAppointmentModal({ isOpen, onClose, dentists = [], onSave }) {
         procedure: procedureString,
         dentist_id: Number(form.dentist_id),
         timeStart: fullTimeStart,
+        isNewPatient: patientType === "new"
       });
       setSelectedServices([]);
     } catch (error) {
@@ -313,13 +304,12 @@ function AddAppointmentModal({ isOpen, onClose, dentists = [], onSave }) {
 
         {/* PATIENT TOGGLE */}
         <div className="form-group full-width" style={{ marginBottom: '10px' }}>
-          <label>Patient Type</label>
           <div style={{ display: 'flex', gap: '10px' }}>
             <button
               type="button"
               onClick={() => setPatientType("new")}
               style={{
-                padding: '6px 12px',
+                flex: 1, padding: '10px',
                 background: patientType === "new" ? '#0ea5e9' : '#f1f5f9',
                 color: patientType === "new" ? 'white' : '#64748b',
                 border: 'none', borderRadius: '4px', cursor: 'pointer'
@@ -331,7 +321,7 @@ function AddAppointmentModal({ isOpen, onClose, dentists = [], onSave }) {
               type="button"
               onClick={() => setPatientType("old")}
               style={{
-                padding: '6px 12px',
+                flex: 1, padding: '10px',
                 background: patientType === "old" ? '#0ea5e9' : '#f1f5f9',
                 color: patientType === "old" ? 'white' : '#64748b',
                 border: 'none', borderRadius: '4px', cursor: 'pointer'
@@ -343,19 +333,45 @@ function AddAppointmentModal({ isOpen, onClose, dentists = [], onSave }) {
         </div>
 
         <div className="form-grid">
-          {/* NAME INPUTS */}
+          {/* SEARCH FOR OLD PATIENT */}
           {patientType === "old" ? (
-            <div className="form-group full-width">
-              <label>Search Patient</label>
-              <select onChange={handlePatientSelect} defaultValue="">
-                <option value="" disabled>Select Patient...</option>
-                {existingPatients.map(p => (
-                  <option key={p.id} value={p.id}>{p.full_name}</option>
-                ))}
-              </select>
+            <div className="form-group full-width" style={{ background: '#f8fafc', padding: '10px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+              <label>Search Patient Name</label>
+              <div style={{ display: 'flex', gap: '5px' }}>
+                <input
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Type name..."
+                  onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                />
+                <button type="button" onClick={handleSearch} disabled={isSearching} style={{ background: '#0ea5e9', color: 'white', border: 'none', padding: '0 15px', borderRadius: '4px', cursor: 'pointer' }}>
+                  {isSearching ? '...' : 'Search'}
+                </button>
+              </div>
+              {searchResults.length > 0 && (
+                <ul style={{ maxHeight: '100px', overflowY: 'auto', background: 'white', marginTop: '5px', border: '1px solid #ddd', padding: 0, listStyle: 'none' }}>
+                  {searchResults.map(p => (
+                    <li
+                      key={p.id}
+                      onClick={() => handleSelectOldPatient(p)}
+                      style={{ padding: '8px', borderBottom: '1px solid #eee', cursor: 'pointer' }}
+                      onMouseOver={(e) => e.currentTarget.style.background = '#f1f5f9'}
+                      onMouseOut={(e) => e.currentTarget.style.background = 'white'}
+                    >
+                      <strong>{p.full_name}</strong> <span style={{ fontSize: '0.8rem', color: '#666' }}>(Born: {p.birthdate ? p.birthdate.split('T')[0] : 'N/A'})</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {form.patient_name && (
+                <div style={{ marginTop: '10px', color: '#059669', fontWeight: 'bold' }}>
+                  Selected: {form.patient_name}
+                </div>
+              )}
             </div>
           ) : (
             <>
+              {/* SPLIT NAMES FOR NEW PATIENT */}
               <div className="form-group">
                 <label>First Name</label>
                 <input name="first_name" value={form.first_name} onChange={handleChange} placeholder="First Name" />
@@ -378,25 +394,40 @@ function AddAppointmentModal({ isOpen, onClose, dentists = [], onSave }) {
           </div>
           <div className="form-group">
             <label htmlFor="age">Age (Auto)</label>
-            <input id="age" name="age" type="number" value={form.age} readOnly placeholder="Auto" style={{ backgroundColor: '#f8fafc', color: '#64748b' }} />
+            <input id="age" name="age" type="number" value={form.age} readOnly placeholder="--" style={{ backgroundColor: '#f8fafc', color: '#64748b' }} />
           </div>
           <div className="form-group">
             <label htmlFor="sex">Sex</label>
-            <select id="sex" name="sex" value={form.sex} onChange={handleChange}>
+            {/* Added fallback value={form.sex || ""} to strictly avoid null */}
+            <select id="sex" name="sex" value={form.sex || ""} onChange={handleChange}>
               <option value="">Select Sex</option>
               <option value="Male">Male</option>
               <option value="Female">Female</option>
             </select>
           </div>
+
+          {/* PHONE WITH +63 */}
           <div className="form-group full-width">
             <label htmlFor="contact_number">Contact Number</label>
-            <input id="contact_number" name="contact_number" type="text" value={form.contact_number} onChange={handleChange} placeholder="e.g. 0917..." />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <span style={{ padding: '10px', background: '#e2e8f0', borderRadius: '4px', color: '#64748b', fontSize: '0.9rem' }}>+63</span>
+              <input
+                id="contact_number"
+                name="contact_number"
+                type="text"
+                value={form.contact_number}
+                onChange={handleChange}
+                placeholder="917..."
+                style={{ flex: 1 }}
+              />
+            </div>
           </div>
 
           {/* DENTIST SELECTION */}
           <div className="form-group full-width">
             <label htmlFor="dentist_id">Dentist</label>
-            <select id="dentist_id" name="dentist_id" value={form.dentist_id} onChange={handleChange}>
+            {/* Added fallback value={form.dentist_id || ""} */}
+            <select id="dentist_id" name="dentist_id" value={form.dentist_id || ""} onChange={handleChange}>
               <option value="">Select dentist</option>
               {dentists.map((d) => (
                 <option key={d.id} value={d.id} disabled={d.status === "Off"}>
@@ -411,14 +442,12 @@ function AddAppointmentModal({ isOpen, onClose, dentists = [], onSave }) {
             <input type="date" id="appointmentDate" name="appointmentDate" value={form.appointmentDate} onChange={handleChange} />
           </div>
 
-          {/* --- NEW TIME SLOT GRID --- */}
+          {/* TIME SLOTS */}
           <div className="form-group full-width">
             <label>Available Slots</label>
-
-            {/* Legend */}
             <div style={{ display: 'flex', gap: '15px', fontSize: '0.8rem', marginBottom: '8px', color: '#64748b' }}>
               <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><div style={{ width: 8, height: 8, background: 'white', border: '1px solid #ccc', borderRadius: '50%' }}></div> Open</span>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><div style={{ width: 8, height: 8, background: '#e0f2fe', borderRadius: '50%' }}></div> Selected</span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><div style={{ width: 8, height: 8, background: '#0ea5e9', borderRadius: '50%' }}></div> Selected</span>
               <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><div style={{ width: 8, height: 8, background: '#f1f5f9', borderRadius: '50%' }}></div> Booked/Past</span>
             </div>
 
@@ -430,55 +459,29 @@ function AddAppointmentModal({ isOpen, onClose, dentists = [], onSave }) {
               </div>
             ) : generatedSlots.length === 0 ? (
               <div style={{ padding: '10px', background: '#f8fafc', color: '#64748b', borderRadius: '6px', textAlign: 'center' }}>
-                No slots available (Dentist off or date passed).
+                No slots available.
               </div>
             ) : (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: '10px', maxHeight: '200px', overflowY: 'auto', padding: '4px' }}>
                 {generatedSlots.map((slot) => {
                   const isDisabled = slot.type !== 'open';
                   const isSelected = form.timeStart === slot.value;
+                  let bg = 'white'; let color = '#334155'; let border = '1px solid #e2e8f0'; let cursor = 'pointer';
 
-                  // Styles
-                  let bg = 'white';
-                  let color = '#334155';
-                  let border = '1px solid #e2e8f0';
-                  let cursor = 'pointer';
-
-                  if (isSelected) {
-                    bg = '#0ea5e9'; color = 'white'; border = '1px solid #0284c7';
-                  } else if (isDisabled) {
+                  if (isSelected) { bg = '#0ea5e9'; color = 'white'; border = '1px solid #0284c7'; }
+                  else if (isDisabled) {
                     bg = '#f1f5f9'; color = '#cbd5e1'; cursor = 'not-allowed';
-                    if (slot.type === 'lunch' || slot.type === 'break') {
-                      color = '#d97706'; bg = '#fffbeb'; border = '1px solid #fcd34d'; // Yellowish for breaks
-                    }
+                    if (slot.type === 'lunch' || slot.type === 'break') { color = '#d97706'; bg = '#fffbeb'; border = '1px solid #fcd34d'; }
                   }
 
                   return (
                     <button
-                      key={slot.value}
-                      type="button"
-                      disabled={isDisabled}
+                      key={slot.value} type="button" disabled={isDisabled}
                       onClick={() => setForm(prev => ({ ...prev, timeStart: slot.value }))}
-                      style={{
-                        padding: '8px 4px',
-                        borderRadius: '6px',
-                        backgroundColor: bg,
-                        color: color,
-                        border: border,
-                        cursor: cursor,
-                        fontSize: '0.85rem',
-                        fontWeight: isSelected ? 'bold' : 'normal',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        justifyContent: 'center'
-                      }}
+                      style={{ padding: '8px 4px', borderRadius: '6px', backgroundColor: bg, color: color, border: border, cursor: cursor, fontSize: '0.85rem', display: 'flex', flexDirection: 'column', alignItems: 'center' }}
                     >
                       <span>{slot.label.split(' ')[0]}</span>
                       <span style={{ fontSize: '0.7rem' }}>{slot.label.split(' ')[1]}</span>
-                      {isDisabled && slot.type !== 'booked' && slot.type !== 'past' && (
-                        <span style={{ fontSize: '0.65rem', marginTop: '2px', textTransform: 'uppercase' }}>{slot.type}</span>
-                      )}
                     </button>
                   );
                 })}
@@ -490,11 +493,9 @@ function AddAppointmentModal({ isOpen, onClose, dentists = [], onSave }) {
             <label htmlFor="service-select">Procedures / Services</label>
             <div className="service-input-group">
               <select id="service-select" value={currentService} onChange={(e) => setCurrentService(e.target.value)}>
-                <option value="">Select a service to add...</option>
+                <option value="">Select a service...</option>
                 {dentalServices.map((service, index) => (
-                  <option key={index} value={service.name}>
-                    {service.name} ({service.price})
-                  </option>
+                  <option key={index} value={service.name}>{service.name} ({service.price})</option>
                 ))}
               </select>
               <button type="button" className="add-service-btn" onClick={handleAddService}>+</button>
@@ -502,8 +503,7 @@ function AddAppointmentModal({ isOpen, onClose, dentists = [], onSave }) {
             <div className="selected-services-container">
               {selectedServices.map((service) => (
                 <span key={service} className="service-chip">
-                  {service}
-                  <button type="button" className="remove-service-btn" onClick={() => handleRemoveService(service)}>×</button>
+                  {service} <button type="button" className="remove-service-btn" onClick={() => handleRemoveService(service)}>×</button>
                 </span>
               ))}
             </div>

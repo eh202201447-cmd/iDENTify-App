@@ -2,16 +2,21 @@ const express = require("express");
 const router = express.Router();
 const db = require("../db");
 
-// Get all patients
+// Get all patients (UPDATED: Added Search Logic)
 router.get("/", async (req, res) => {
   try {
-    const { email } = req.query;
+    const { email, search } = req.query; // Extract 'search' param
     let query = "SELECT * FROM patients";
     let params = [];
 
     if (email) {
       query += " WHERE email = ?";
       params.push(email);
+    } else if (search) {
+      // Search by First, Last, or Full Name
+      query += " WHERE full_name LIKE ? OR first_name LIKE ? OR last_name LIKE ?";
+      const likeTerm = `%${search}%`;
+      params.push(likeTerm, likeTerm, likeTerm);
     } else {
       query += " ORDER BY id DESC";
     }
@@ -21,7 +26,6 @@ router.get("/", async (req, res) => {
     const results = rows.map(p => ({
       ...p,
       medical_alerts: p.medical_alerts ? p.medical_alerts.split(',') : [],
-      // Ensure dental_history is passed as a string
       dental_history: p.dental_history || "", 
       vitals: typeof p.vitals === 'string' ? JSON.parse(p.vitals) : (p.vitals || {}),
       xrays: [] 
@@ -72,15 +76,14 @@ router.get("/:id", async (req, res) => {
 // Create patient
 router.post("/", async (req, res) => {
   const { 
-    full_name, first_name, last_name, middle_name, // UPDATED: Name fields
+    full_name, first_name, last_name, middle_name,
     birthdate, gender, sex, address, 
     contact_number, contact, email, 
-    medicalAlerts, dental_history, // UPDATED: Dental History
+    medicalAlerts, dental_history, 
     vitals, age, dentist_id,
     parent_id, xrays 
   } = req.body;
   
-  // Logic: Construct full_name if only split names are provided
   let dbFullName = full_name;
   if (!dbFullName && (first_name || last_name)) {
       dbFullName = `${first_name || ''} ${middle_name ? middle_name + ' ' : ''}${last_name || ''}`.trim();
@@ -123,7 +126,6 @@ router.put("/:id", async (req, res) => {
     vitals, age, dentist_id, xrays 
   } = req.body;
   
-  // Logic: Reconstruct full_name if split names change
   let dbName = full_name || name;
   if (!dbName && (first_name || last_name)) {
       dbName = `${first_name || ''} ${middle_name ? middle_name + ' ' : ''}${last_name || ''}`.trim();
@@ -144,7 +146,6 @@ router.put("/:id", async (req, res) => {
   }
 
   try {
-    // Only update xrays if provided
     if (dbXraysString !== null) {
         await db.query(
             `UPDATE patients 

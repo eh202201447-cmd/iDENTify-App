@@ -36,6 +36,7 @@ function EditAppointmentModal({ appointment, initialContact, initialAge, initial
   if (!appointment) return null;
 
   // --- INITIALIZE STATE ---
+
   // Helper to split full name if specific fields aren't available
   const splitName = (fullName) => {
     const parts = fullName ? fullName.split(" ") : ["", ""];
@@ -69,7 +70,7 @@ function EditAppointmentModal({ appointment, initialContact, initialAge, initial
   const [formData, setFormData] = useState({
     first_name: initialNameParts.first,
     last_name: initialNameParts.last,
-    middle_name: "",
+    middle_name: "", // Defaults to empty if not provided separately
 
     patient_name: appointment.patient_name || appointment.patient || "",
     appointmentDate: getInitialDate(),
@@ -115,7 +116,7 @@ function EditAppointmentModal({ appointment, initialContact, initialAge, initial
       let age = today.getFullYear() - dob.getFullYear();
       const m = today.getMonth() - dob.getMonth();
       if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age--;
-      setFormData(prev => ({ ...prev, age: age.toString() }));
+      setFormData(prev => ({ ...prev, age: age >= 0 ? age.toString() : "0" }));
     }
   }, [formData.birthdate]);
 
@@ -324,16 +325,21 @@ function EditAppointmentModal({ appointment, initialContact, initialAge, initial
             </select>
           </div>
 
+          {/* UPDATED: PHONE WITH +63 PREFIX MATCHING ADD MODAL */}
           <div className="form-group full-width">
             <label htmlFor="contact_number">Contact Number</label>
-            <input
-              type="text"
-              id="contact_number"
-              name="contact_number"
-              value={formData.contact_number}
-              onChange={handleChange}
-              placeholder="e.g. 0917..."
-            />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <span style={{ padding: '10px', background: '#e2e8f0', borderRadius: '4px', color: '#64748b', fontSize: '0.9rem' }}>+63</span>
+              <input
+                id="contact_number"
+                name="contact_number"
+                type="text"
+                value={formData.contact_number}
+                onChange={handleChange}
+                placeholder="917..."
+                style={{ flex: 1 }}
+              />
+            </div>
           </div>
 
           <div className="form-group full-width">
@@ -453,7 +459,6 @@ function EditAppointmentModal({ appointment, initialContact, initialAge, initial
                 onChange={(e) => setCurrentService(e.target.value)}
               >
                 <option value="">Select a service to add...</option>
-                {/* UPDATED: Map to display name and price */}
                 {dentalServices.map((service, index) => (
                   <option key={index} value={service.name}>
                     {service.name} ({service.price})

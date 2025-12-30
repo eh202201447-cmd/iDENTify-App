@@ -29,6 +29,14 @@ export async function getPatients() {
     const res = await fetch(`${API_BASE}/patients/`);
     return handleResponse(res);
 }
+
+// --- NEW SEARCH FUNCTION ---
+export async function searchPatients(query) {
+    const res = await fetch(`${API_BASE}/patients?search=${encodeURIComponent(query)}`);
+    return handleResponse(res);
+}
+// ---------------------------
+
 export async function getPatientById(id) {
     const res = await fetch(`${API_BASE}/patients/${id}/`);
     return handleResponse(res);
@@ -130,7 +138,6 @@ export async function updateDentist(id, updates) {
 
 /* Tooth Conditions */
 export async function getToothConditions(patientId, year) {
-    // If year is provided, append it to query string
     let url = `${API_BASE}/tooth-conditions/${patientId}`;
     if (year) url += `?year=${year}`;
     const res = await fetch(url);
@@ -218,6 +225,7 @@ export async function saveAnnualRecord(payload) {
 
 export default {
     getPatients,
+    searchPatients, // Added here
     getPatientById,
     createPatient,
     updatePatient,
