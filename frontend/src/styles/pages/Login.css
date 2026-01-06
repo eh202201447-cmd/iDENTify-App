@@ -137,6 +137,42 @@
   background: #fff;
 }
 
+/* New Styles for Password Toggle */
+.password-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.password-input-wrapper input {
+  width: 100%;
+  padding-right: 44px; /* Space for the button */
+}
+
+.password-toggle-btn {
+  position: absolute;
+  right: 12px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #94a3b8; /* Slate-400 */
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s ease;
+  z-index: 10;
+}
+
+.password-toggle-btn:hover {
+  color: #0ea5e9; /* Sky-500 */
+}
+
+.password-toggle-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
 /* --- Validation Styles --- */
 .login-form__group input.input-error {
   border-color: #ef4444;
