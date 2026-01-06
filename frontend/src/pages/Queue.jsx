@@ -160,8 +160,20 @@ function Queue() {
   };
 
   const queueWithDetails = useMemo(
-    () =>
-      queue
+    () => {
+      // 1. Calculate persistent Ticket Numbers based on Time Added
+      // Include 'Done' but exclude 'Cancelled' to match logical flow
+      const sortedForNumbering = [...queue]
+        .filter(q => q.status !== 'Cancelled')
+        .sort((a, b) => new Date(a.time_added) - new Date(b.time_added));
+
+      const ticketMap = new Map();
+      sortedForNumbering.forEach((item, index) => {
+        ticketMap.set(item.id, index + 1);
+      });
+
+      // 2. Filter and Map for Display
+      return queue
         // Filter out Done items (they go to History)
         .filter((item) => item.status !== "Done")
         .map((item, index) => {
@@ -173,12 +185,14 @@ function Queue() {
 
           return {
             ...item,
-            number: index + 1,
+            // Use the persistent number map. Fallback to index if not found (e.g. Cancelled items if viewed)
+            number: ticketMap.get(item.id) || (index + 1),
             name: patientName,
             assignedDentist: dentistName,
             waitingTime: calculateWaitingTime(index, dentistName),
           };
-        }),
+        });
+    },
     [queue, patients, dentists]
   );
 

@@ -100,15 +100,6 @@ function AppLayout({ setIsLoggedIn }) {
 						<img src={QueueIcon} alt="Queue" />
 						<span>Queue</span>
 					</NavLink>
-
-					{/* NEW HISTORY LINK */}
-					<NavLink to="/app/history">
-						<svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-							<path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-						</svg>
-						<span>History</span>
-					</NavLink>
-
 					<NavLink to="/app/reports">
 						<img src={ReportIcon} alt="Reports" />
 						<span>Reports</span>
@@ -117,12 +108,18 @@ function AppLayout({ setIsLoggedIn }) {
 						<img src={DentistIcon} alt="Dentists" />
 						<span>Dentists</span>
 					</NavLink>
-					<NavLink to="/app/patients">
+					{/* <NavLink to="/app/patients">
 						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
 							<circle cx="12" cy="8" r="3" stroke="currentColor" strokeWidth="1.5" />
 							<path d="M4 18c1.3-3.6 4.6-6 8-6s6.7 2.4 8 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
 						</svg>
 						<span>Patients</span>
+					</NavLink> */}
+					<NavLink to="/app/history">
+						<svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+							<path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+						</svg>
+						<span>History</span>
 					</NavLink>
 				</nav>
 
