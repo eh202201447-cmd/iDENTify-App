@@ -2,6 +2,24 @@ const express = require("express");
 const router = express.Router();
 const db = require("../db");
 
+// --- NEW ROUTE: Get Single Record by ID (Must be BEFORE /:patientId) ---
+router.get("/record/:id", async (req, res) => {
+  const { id } = req.params;
+  try {
+    const [rows] = await db.query("SELECT * FROM treatment_timeline WHERE id = ?", [id]);
+    
+    if (rows.length === 0) {
+      return res.status(404).json({ message: "Record not found" });
+    }
+
+    res.json(rows[0]);
+  } catch (error) {
+    console.error("Error fetching record details:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// Get All Records for a Patient (Optional Year Filter)
 router.get("/:patientId", async (req, res) => {
   const { patientId } = req.params;
   const { year } = req.query;
